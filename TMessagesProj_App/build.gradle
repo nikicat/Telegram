@@ -152,6 +152,24 @@ android {
             }
             buildConfigField "boolean", "BUNDLE", "false"
         }
+        afatX64 {
+            ndk {
+                abiFilters "x86_64"
+            }
+            sourceSets.debug {
+                manifest.srcFile '../TMessagesProj/config/debug/AndroidManifest_SDK23.xml'
+            }
+            sourceSets.release {
+                manifest.srcFile '../TMessagesProj/config/release/AndroidManifest_SDK23.xml'
+            }
+            sourceSets.standalone {
+                manifest.srcFile '../TMessagesProj/config/release/AndroidManifest_standalone.xml'
+            }
+            ext {
+                abiVersionCode = 10
+            }
+            buildConfigField "boolean", "BUNDLE", "false"
+        }
     }
 
     defaultConfig.versionCode = Integer.parseInt(APP_VERSION_CODE)
@@ -165,7 +183,7 @@ android {
 
     variantFilter { variant ->
         def names = variant.flavors*.name
-        if (variant.buildType.name != "release" && !names.contains("afat")) {
+        if (variant.buildType.name != "release" && !names.contains("afat") && !names.contains("afatX64")) {
             setIgnore(true)
         }
     }
