@@ -1,0 +1,50 @@
+# Adapted from ../Telegram-X/compose.yaml.
+# Host ADB port is 5556 (Telegram-X uses 5555) so both redroid containers
+# can run concurrently on the same host.
+
+services:
+  redroid:
+    image: docker.io/teddynight/redroid16:latest
+    # Stock redroid/redroid:16.0.0_64only-latest has a broken ashmem-memfd
+    # compat check on kernels 5.18+ (no ashmem_linux module).
+    # teddynight/redroid16 patches libcutils/ashmem-dev.cpp to skip it.
+    # See: https://github.com/remote-android/redroid-patches/pull/5
+    privileged: true
+    stdin_open: false
+    tty: false
+    # podman-compose: don't treat Android's /init as systemd
+    annotations:
+      io.podman.annotations.systemd: "false"
+    networks:
+      - redroid
+    ports:
+      - "5556:5555" # ADB (host:container)
+    volumes:
+      - ./redroid-data:/data # Persistent Android /data partition
+    devices:
+      - /dev/dri/renderD128:/dev/dri/renderD128 # GPU passthrough
+      # apexd needs these to create loop and device-mapper devices.
+      # Use 'devices' instead of bind mounts so they survive Android init's
+      # /dev remounts and are properly cgroup-allowed.
+      - /dev/loop-control:/dev/loop-control
+      - /dev/mapper/control:/dev/mapper/control
+    mem_limit: 4g
+    # Android 16 creates ~550 property area files (128KB each, ~70MB total)
+    # in /dev/__properties__/. Default crun /dev tmpfs is only 64MB → SIGBUS.
+    tmpfs:
+      - /dev:exec,mode=755,size=256m
+    # Android's init ignores SIGRTMIN+3 (image default), skip the 10s timeout
+    stop_signal: SIGKILL
+    command:
+      - androidboot.redroid_gpu_mode=host
+      - androidboot.redroid_gpu_node=/dev/dri/renderD128
+      - androidboot.use_memfd=true
+      # Uncomment to customize display:
+      # - androidboot.redroid_width=1080
+      # - androidboot.redroid_height=1920
+      # - androidboot.redroid_fps=30
+      # - androidboot.redroid_dpi=480
+
+networks:
+  redroid:
+    driver: bridge
