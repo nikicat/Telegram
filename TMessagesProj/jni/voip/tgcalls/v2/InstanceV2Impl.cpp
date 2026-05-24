@@ -920,6 +920,7 @@ public:
     _proxy(std::move(descriptor.proxy)),
     _directConnectionChannel(descriptor.directConnectionChannel),
     _enableP2P(descriptor.config.enableP2P),
+    _enableTCP(descriptor.config.allowTCP),
     _enableStunMarking(descriptor.config.enableStunMarking),
     _encryptionKey(std::move(descriptor.encryptionKey)),
     _stateUpdated(descriptor.stateUpdated),
@@ -1051,12 +1052,12 @@ public:
             proxy = *(_proxy.get());
         }
 
-        _networking.reset(new ThreadLocalObject<InstanceNetworking>(_threads->getNetworkThread(), [weak, threads = _threads, encryptionKey = _encryptionKey, isOutgoing = _encryptionKey.isOutgoing, enableStunMarking = _enableStunMarking, rtcServers = _rtcServers, proxy, enableP2P = _enableP2P, customParameters = _customParameters]() {
+        _networking.reset(new ThreadLocalObject<InstanceNetworking>(_threads->getNetworkThread(), [weak, threads = _threads, encryptionKey = _encryptionKey, isOutgoing = _encryptionKey.isOutgoing, enableStunMarking = _enableStunMarking, enableTCP = _enableTCP, rtcServers = _rtcServers, proxy, enableP2P = _enableP2P, customParameters = _customParameters]() {
             return std::static_pointer_cast<InstanceNetworking>(std::make_shared<NativeNetworkingImpl>(InstanceNetworking::Configuration{
                 .encryptionKey = encryptionKey,
                 .isOutgoing = isOutgoing,
                 .enableStunMarking = enableStunMarking,
-                .enableTCP = false,
+                .enableTCP = enableTCP,
                 .enableP2P = enableP2P,
                 .rtcServers = rtcServers,
                 .proxy = proxy,
@@ -2204,6 +2205,7 @@ private:
     std::unique_ptr<Proxy> _proxy;
     std::shared_ptr<DirectConnectionChannel> _directConnectionChannel;
     bool _enableP2P = false;
+    bool _enableTCP = false;
     bool _enableStunMarking = false;
     EncryptionKey _encryptionKey;
     std::function<void(State)> _stateUpdated;

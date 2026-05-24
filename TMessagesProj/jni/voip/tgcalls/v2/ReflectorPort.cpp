@@ -12,6 +12,8 @@
 #include "absl/types/optional.h"
 #include "api/transport/stun.h"
 #include "p2p/base/connection.h"
+#include "rtc_base/socket_adapters.h"
+#include "v2/Socks5ProxySocket.h"
 #include "p2p/base/p2p_constants.h"
 #include "rtc_base/async_packet_socket.h"
 #include "rtc_base/byte_order.h"
@@ -94,7 +96,17 @@ rtc::AsyncPacketSocket *CreateClientRawTcpSocket(
         RTC_LOG(LS_ERROR) << "Setting TCP_NODELAY option failed with error "
         << socket->GetError();
     }
-    
+
+    if (proxy_info.type == rtc::PROXY_HTTPS) {
+        socket =
+            new rtc::AsyncHttpsProxySocket(socket, user_agent, proxy_info.address,
+                                           proxy_info.username, proxy_info.password);
+    } else if (proxy_info.type == rtc::PROXY_SOCKS5) {
+        socket =
+            new tgcalls::Socks5TcpProxySocket(socket, proxy_info.address,
+                                              proxy_info.username, proxy_info.password);
+    }
+
     if (socket->Connect(remote_address) < 0) {
         RTC_LOG(LS_ERROR) << "TCP connect failed with error " << socket->GetError();
         delete socket;

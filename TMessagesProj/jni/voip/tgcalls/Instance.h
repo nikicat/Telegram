@@ -38,7 +38,13 @@ struct FilePath {
 #endif
 };
 
+enum class ProxyType {
+	Socks5,
+	HttpConnect // maps to rtc::PROXY_HTTPS (HTTP CONNECT method)
+};
+
 struct Proxy {
+	ProxyType type = ProxyType::Socks5;
 	std::string host;
 	uint16_t port = 0;
 	std::string login;

@@ -40,6 +40,7 @@
 #include "api/enable_media.h"
 #include "p2p/client/basic_port_allocator.h"
 #include "p2p/base/basic_packet_socket_factory.h"
+#include "TgCallsCryptStringImpl.h"
 #include "rtc_base/network.h"
 #include "p2p/base/default_ice_transport_factory.h"
 
@@ -636,6 +637,18 @@ public:
         _relayPortFactory = std::make_unique<ReflectorRelayPortFactory>(_rtcServers, false, 0, _threads->getNetworkThread()->socketserver());
 
         auto portAllocator = std::make_unique<cricket::BasicPortAllocator>(_networkManager.get(), _socketFactory.get(), nullptr, _relayPortFactory.get());
+
+        if (_proxy) {
+            rtc::ProxyInfo proxyInfo;
+            proxyInfo.type = (_proxy->type == ProxyType::HttpConnect)
+                ? rtc::ProxyType::PROXY_HTTPS
+                : rtc::ProxyType::PROXY_SOCKS5;
+            proxyInfo.address = rtc::SocketAddress(_proxy->host, _proxy->port);
+            proxyInfo.username = _proxy->login;
+            proxyInfo.password = rtc::CryptString(TgCallsCryptStringImpl(_proxy->password));
+            portAllocator->set_proxy("t/1.0", proxyInfo);
+        }
+
         peerConnectionDependencies.allocator = std::move(portAllocator);
 
         webrtc::PeerConnectionInterface::RTCConfiguration peerConnectionConfiguration;

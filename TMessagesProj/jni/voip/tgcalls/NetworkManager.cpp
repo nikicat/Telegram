@@ -13,6 +13,7 @@
 #include "rtc_base/network_monitor_factory.h"
 
 #include "TurnCustomizerImpl.h"
+#include "TgCallsCryptStringImpl.h"
 #include "platform/PlatformInterface.h"
 
 extern "C" {
@@ -26,41 +27,6 @@ extern "C" {
 } // extern "C"
 
 namespace tgcalls {
-
-class TgCallsCryptStringImpl : public rtc::CryptStringImpl {
-public:
-    TgCallsCryptStringImpl(std::string const &value) :
-    _value(value) {
-    }
-    
-    virtual ~TgCallsCryptStringImpl() override {
-    }
-    
-    virtual size_t GetLength() const override {
-        return _value.size();
-    }
-    
-    virtual void CopyTo(char* dest, bool nullterminate) const override {
-        memcpy(dest, _value.data(), _value.size());
-        if (nullterminate) {
-            dest[_value.size()] = 0;
-        }
-    }
-    virtual std::string UrlEncode() const override {
-        return _value;
-    }
-    virtual CryptStringImpl* Copy() const override {
-        return new TgCallsCryptStringImpl(_value);
-    }
-    
-    virtual void CopyRawTo(std::vector<unsigned char>* dest) const override {
-        dest->resize(_value.size());
-        memcpy(dest->data(), _value.data(), _value.size());
-    }
-    
-private:
-    std::string _value;
-};
 
 NetworkManager::NetworkManager(
 	rtc::Thread *thread,
@@ -142,7 +108,9 @@ void NetworkManager::start() {
     
     if (_proxy) {
         rtc::ProxyInfo proxyInfo;
-        proxyInfo.type = rtc::ProxyType::PROXY_SOCKS5;
+        proxyInfo.type = (_proxy->type == ProxyType::HttpConnect)
+            ? rtc::ProxyType::PROXY_HTTPS
+            : rtc::ProxyType::PROXY_SOCKS5;
         proxyInfo.address = rtc::SocketAddress(_proxy->host, _proxy->port);
         proxyInfo.username = _proxy->login;
         proxyInfo.password = rtc::CryptString(TgCallsCryptStringImpl(_proxy->password));

@@ -1,6 +1,7 @@
 #include "v2/NativeNetworkingImpl.h"
 
 #include "p2p/base/basic_packet_socket_factory.h"
+#include "rtc_base/async_tcp_socket.h"
 #include "p2p/client/basic_port_allocator.h"
 #include "p2p/base/p2p_transport_channel.h"
 #include "p2p/base/basic_async_resolver_factory.h"
@@ -16,6 +17,7 @@
 #include "api/async_dns_resolver.h"
 
 #include "TurnCustomizerImpl.h"
+#include "TgCallsCryptStringImpl.h"
 #include "ReflectorRelayPortFactory.h"
 #include "SctpDataChannelProviderInterfaceImpl.h"
 #include "StaticThreads.h"
@@ -23,6 +25,7 @@
 #include "p2p/base/turn_port.h"
 
 #include "ReflectorPort.h"
+#include "Socks5ProxySocket.h"
 #include "FieldTrialsConfig.h"
 #include "EncryptedConnection.h"
 
@@ -173,9 +176,14 @@ private:
 
 class WrappedBasicPacketSocketFactory : public rtc::PacketSocketFactory {
 public:
-    WrappedBasicPacketSocketFactory(std::unique_ptr<rtc::BasicPacketSocketFactory> &&impl, bool standaloneReflectorMode) :
+    WrappedBasicPacketSocketFactory(std::unique_ptr<rtc::BasicPacketSocketFactory> &&impl,
+                                     rtc::SocketFactory *raw_socket_factory,
+                                     bool standaloneReflectorMode,
+                                     absl::optional<Proxy> proxy) :
     _impl(std::move(impl)),
-    _standaloneReflectorMode(standaloneReflectorMode) {
+    _rawSocketFactory(raw_socket_factory),
+    _standaloneReflectorMode(standaloneReflectorMode),
+    _proxy(std::move(proxy)) {
     }
 
     virtual ~WrappedBasicPacketSocketFactory() {
@@ -187,15 +195,24 @@ public:
         rtc::IPAddress ipAddress(v4addr);
         if (_standaloneReflectorMode && address.ipaddr() == ipAddress && address.port() != 12345) {
             return nullptr;
-        } else {
-            rtc::SocketAddress updatedAddress = address;
-            if (updatedAddress.port() == 12345) {
-                updatedAddress.SetPort(0);
-            }
-            return _impl->CreateUdpSocket(updatedAddress, min_port, max_port);
         }
+        rtc::SocketAddress updatedAddress = address;
+        if (updatedAddress.port() == 12345) {
+            updatedAddress.SetPort(0);
+        }
+        if (_proxy && _proxy->type == ProxyType::Socks5 && _rawSocketFactory) {
+            rtc::SocketAddress proxyAddr(_proxy->host, _proxy->port);
+            rtc::CryptString password(TgCallsCryptStringImpl(_proxy->password));
+            auto socks = Socks5UdpProxySocket::Create(_rawSocketFactory,
+                                                       updatedAddress,
+                                                       proxyAddr,
+                                                       _proxy->login,
+                                                       password);
+            return socks.release();
+        }
+        return _impl->CreateUdpSocket(updatedAddress, min_port, max_port);
     }
-    
+
     virtual rtc::AsyncListenSocket *CreateServerTcpSocket(const rtc::SocketAddress &local_address, uint16_t min_port, uint16_t max_port, int opts) override {
         in_addr v4addr;
         inet_pton(AF_INET, "0.1.2.3", &v4addr);
@@ -213,9 +230,28 @@ public:
         rtc::IPAddress ipAddress(v4addr);
         if (_standaloneReflectorMode && local_address.ipaddr() == ipAddress) {
             return nullptr;
-        } else {
-            return _impl->CreateClientTcpSocket(local_address, remote_address, proxy_info, user_agent, tcp_options);
         }
+        // For SOCKS5, the inner BasicPacketSocketFactory doesn't know how to
+        // wrap; do it ourselves.
+        if (_proxy && _proxy->type == ProxyType::Socks5 && _rawSocketFactory) {
+            rtc::Socket *raw = _rawSocketFactory->CreateSocket(
+                local_address.family() ? local_address.family() : AF_INET,
+                SOCK_STREAM);
+            if (!raw) return nullptr;
+            if (!local_address.IsNil()) {
+                raw->Bind(local_address);
+            }
+            rtc::SocketAddress proxyAddr(_proxy->host, _proxy->port);
+            rtc::CryptString password(TgCallsCryptStringImpl(_proxy->password));
+            auto *wrapped = new Socks5TcpProxySocket(raw, proxyAddr,
+                                                      _proxy->login, password);
+            if (wrapped->Connect(remote_address) < 0) {
+                delete wrapped;
+                return nullptr;
+            }
+            return new rtc::AsyncTCPSocket(wrapped);
+        }
+        return _impl->CreateClientTcpSocket(local_address, remote_address, proxy_info, user_agent, tcp_options);
     }
 
     virtual std::unique_ptr<webrtc::AsyncDnsResolverInterface> CreateAsyncDnsResolver() override {
@@ -223,7 +259,9 @@ public:
     }
 private:
     std::unique_ptr<rtc::BasicPacketSocketFactory> _impl;
+    rtc::SocketFactory *_rawSocketFactory = nullptr;
     bool _standaloneReflectorMode = false;
+    absl::optional<Proxy> _proxy;
 };
 
 class WrappedNetworkManager: public rtc::NetworkManager, public sigslot::has_slots<> {
@@ -519,11 +557,24 @@ _dataChannelMessageReceived(configuration.dataChannelMessageReceived) {
     _underlyingSocketFactory = _threads->getNetworkThread()->socketserver();
     
     _networkMonitorFactory = PlatformInterface::SharedInstance()->createNetworkMonitorFactory();
-    if (getCustomParameterBool(_customParameters, "network_standalone_reflectors")) {
-        _socketFactory = std::make_unique<WrappedBasicPacketSocketFactory>(std::make_unique<rtc::BasicPacketSocketFactory>(_threads->getNetworkThread()->socketserver()), true);
-        _networkManager = std::make_unique<WrappedNetworkManager>(_networkMonitorFactory.get(), _threads->getNetworkThread()->socketserver());
+    const bool standaloneReflectorMode = getCustomParameterBool(_customParameters, "network_standalone_reflectors");
+    const bool useWrappedFactory = standaloneReflectorMode || _proxy.has_value();
+    if (useWrappedFactory) {
+        absl::optional<Proxy> proxyForFactory;
+        if (_proxy.has_value()) {
+            proxyForFactory = *_proxy;
+        }
+        _socketFactory = std::make_unique<WrappedBasicPacketSocketFactory>(
+            std::make_unique<rtc::BasicPacketSocketFactory>(_threads->getNetworkThread()->socketserver()),
+            _threads->getNetworkThread()->socketserver(),
+            standaloneReflectorMode,
+            std::move(proxyForFactory));
     } else {
         _socketFactory = std::make_unique<rtc::BasicPacketSocketFactory>(_threads->getNetworkThread()->socketserver());
+    }
+    if (standaloneReflectorMode) {
+        _networkManager = std::make_unique<WrappedNetworkManager>(_networkMonitorFactory.get(), _threads->getNetworkThread()->socketserver());
+    } else {
         _networkManager = std::make_unique<rtc::BasicNetworkManager>(_networkMonitorFactory.get(), _threads->getNetworkThread()->socketserver());
     }
     
@@ -600,16 +651,31 @@ void NativeNetworkingImpl::resetDtlsSrtpTransport() {
     if (!_enableTCP) {
         flags |= cricket::PORTALLOCATOR_DISABLE_TCP;
     }
-    
-    if (_proxy || !_enableP2P) {
+
+    const bool proxyDisablesUdp =
+        _proxy && _proxy->type == ProxyType::HttpConnect;
+    if (proxyDisablesUdp || !_enableP2P) {
         flags |= cricket::PORTALLOCATOR_DISABLE_UDP;
+    }
+    if (_proxy || !_enableP2P) {
         flags |= cricket::PORTALLOCATOR_DISABLE_STUN;
         uint32_t candidateFilter = _portAllocator->candidate_filter();
         candidateFilter &= ~(cricket::CF_REFLEXIVE);
         _portAllocator->SetCandidateFilter(candidateFilter);
     }
-    
+
     _portAllocator->set_step_delay(cricket::kMinimumStepDelay);
+
+    if (_proxy) {
+        rtc::ProxyInfo proxyInfo;
+        proxyInfo.type = (_proxy->type == ProxyType::HttpConnect)
+            ? rtc::ProxyType::PROXY_HTTPS
+            : rtc::ProxyType::PROXY_SOCKS5;
+        proxyInfo.address = rtc::SocketAddress(_proxy->host, _proxy->port);
+        proxyInfo.username = _proxy->login;
+        proxyInfo.password = rtc::CryptString(TgCallsCryptStringImpl(_proxy->password));
+        _portAllocator->set_proxy("t/1.0", proxyInfo);
+    }
 
     _portAllocator->set_flags(flags);
     _portAllocator->Initialize();
