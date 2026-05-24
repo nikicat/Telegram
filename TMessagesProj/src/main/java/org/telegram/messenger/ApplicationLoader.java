@@ -28,6 +28,7 @@ import android.os.Handler;
 import android.os.PowerManager;
 import android.os.SystemClock;
 import android.telephony.TelephonyManager;
+import android.text.TextUtils;
 import android.view.ViewGroup;
 
 import androidx.annotation.NonNull;
@@ -246,6 +247,20 @@ public class ApplicationLoader extends Application {
         SharedConfig.loadConfig();
         SharedConfig.loadProxyList();
         SingBoxController.syncWithProxyList();
+        SharedPreferences mainPrefs = ApplicationLoader.applicationContext
+                .getSharedPreferences("mainconfig", Context.MODE_PRIVATE);
+        if (!mainPrefs.getBoolean("default_proxy_imported", false)
+                && SharedConfig.proxyList.isEmpty()
+                && !TextUtils.isEmpty(BuildConfig.DEFAULT_PROXY_LINK)) {
+            SharedConfig.ProxyInfo defaultInfo = DefaultProxyLinkParser.parse(BuildConfig.DEFAULT_PROXY_LINK);
+            if (defaultInfo != null) {
+                SharedConfig.ProxyInfo persisted = SharedConfig.addProxy(defaultInfo);
+                SharedConfig.currentProxy = persisted;
+                MessagesController.getGlobalMainSettings().edit().putBoolean("proxy_enabled", true).apply();
+                mainPrefs.edit().putBoolean("default_proxy_imported", true).apply();
+                // SingBoxController.syncWithProxyList() was called inside addProxy
+            }
+        }
         SharedPrefsHelper.init(applicationContext);
         for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) { //TODO improve account
             UserConfig.getInstance(a).loadConfig();
