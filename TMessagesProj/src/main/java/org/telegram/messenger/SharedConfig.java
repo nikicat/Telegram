@@ -1601,6 +1601,7 @@ public class SharedConfig {
         }
         proxyList.add(0, proxyInfo);
         saveProxyList();
+        SingBoxController.syncWithProxyList();
         return proxyInfo;
     }
 
@@ -1628,6 +1629,7 @@ public class SharedConfig {
         }
         proxyList.remove(proxyInfo);
         saveProxyList();
+        SingBoxController.syncWithProxyList();
     }
 
     public static void checkSaveToGalleryFiles() {
