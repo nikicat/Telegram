@@ -41,6 +41,7 @@ import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.PushListenerController;
 import org.telegram.messenger.SharedConfig;
+import org.telegram.messenger.SingBoxController;
 import org.telegram.messenger.StatsController;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.Utilities;
@@ -615,8 +616,11 @@ public class ConnectionsManager extends BaseController {
         String proxySecret = preferences.getString("proxy_secret", "");
         int proxyPort = preferences.getInt("proxy_port", 1080);
 
-        if (preferences.getBoolean("proxy_enabled", false) && !TextUtils.isEmpty(proxyAddress)) {
-            native_setProxySettings(currentAccount, proxyAddress, proxyPort, proxyUsername, proxyPassword, proxySecret);
+        SharedConfig.ProxyInfo current = SharedConfig.currentProxy;
+        SharedConfig.ProxyInfo resolved = SingBoxController.resolveForConnection(current);
+        if (preferences.getBoolean("proxy_enabled", false) && resolved != null) {
+            native_setProxySettings(currentAccount, resolved.address, resolved.port,
+                    resolved.username, resolved.password, resolved.secret);
         }
         String installer = "";
         try {
@@ -940,6 +944,17 @@ public class ConnectionsManager extends BaseController {
         }
         if (secret == null) {
             secret = "";
+        }
+
+        // If the active proxy is a TUIC entry, substitute the loopback SOCKS5 endpoint.
+        SharedConfig.ProxyInfo resolved = SingBoxController.resolveForConnection(SharedConfig.currentProxy);
+        if (resolved != null && SharedConfig.currentProxy != null
+                && SharedConfig.currentProxy.type == SharedConfig.PROXY_TYPE_TUIC) {
+            address = resolved.address;
+            port = resolved.port;
+            username = resolved.username;
+            password = resolved.password;
+            secret = resolved.secret;
         }
 
         for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
