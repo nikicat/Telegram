@@ -2680,6 +2680,11 @@
     <string name="UseProxyTelegramInfo2">This proxy may display a sponsored channel in your chat list. This doesn\'t reveal any of your Telegram traffic.</string>
     <string name="UseProxyForCalls">Use proxy for calls</string>
     <string name="UseProxyForCallsInfo">Proxy servers may degrade the quality of your calls.</string>
+    <string name="UseProxyTuic">TUIC Proxy</string>
+    <string name="UseProxyTuicInfo">TUIC proxy settings (QUIC-based).</string>
+    <string name="UseProxyTuicUuid">UUID</string>
+    <string name="UseProxyTuicCongestionControl">Congestion Control</string>
+    <string name="UseProxyTuicTlsInsecure">Skip TLS verification</string>
     <string name="ConnectingToProxyEnable">Enable</string>
     <string name="LowDiskSpaceTitle">Attention</string>
     <string name="LowDiskSpaceMessage">Your device is almost out of disk space. To free some space, you can set up Telegram to cache only recent media.</string>

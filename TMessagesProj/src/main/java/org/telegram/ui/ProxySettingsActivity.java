@@ -52,14 +52,17 @@ import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.SvgHelper;
 import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.ConnectionsManager;
+import org.telegram.messenger.TuicProxyConfig;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.ActionBarMenuItem;
+import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ActionBar.ThemeDescription;
 import org.telegram.ui.Cells.HeaderCell;
 import org.telegram.ui.Cells.RadioCell;
 import org.telegram.ui.Cells.ShadowSectionCell;
+import org.telegram.ui.Cells.TextCheckCell;
 import org.telegram.ui.Cells.TextInfoPrivacyCell;
 import org.telegram.ui.Cells.TextSettingsCell;
 import org.telegram.ui.Components.CubicBezierInterpolator;
@@ -77,10 +80,11 @@ public class ProxySettingsActivity extends BaseFragment {
 
     private final static int TYPE_SOCKS5 = 0;
     private final static int TYPE_MTPROTO = 1;
+    private final static int TYPE_TUIC = 2;
 
     private final static int FIELD_IP = 0;
     private final static int FIELD_PORT = 1;
-    private final static int FIELD_USER = 2;
+    private final static int FIELD_USER = 2;   // also used as UUID in TUIC mode
     private final static int FIELD_PASSWORD = 3;
     private final static int FIELD_SECRET = 4;
 
@@ -90,12 +94,20 @@ public class ProxySettingsActivity extends BaseFragment {
     private LinearLayout inputFieldsContainer;
     private HeaderCell headerCell;
     private ShadowSectionCell[] sectionCell = new ShadowSectionCell[3];
-    private TextInfoPrivacyCell[] bottomCells = new TextInfoPrivacyCell[2];
+    private TextInfoPrivacyCell[] bottomCells = new TextInfoPrivacyCell[3];
     private TextSettingsCell shareCell;
     private TextSettingsCell pasteCell;
     private ActionBarMenuItem doneItem;
-    private RadioCell[] typeCell = new RadioCell[2];
+    private RadioCell[] typeCell = new RadioCell[3];
     private int currentType = -1;
+
+    // TUIC-specific UI elements
+    private TextSettingsCell congestionControlCell;
+    private TextCheckCell tlsInsecureCell;
+    private TextCheckCell useForCallsCell;
+    private String congestionControl = "bbr";
+    private boolean tlsInsecure = true;
+    private boolean tuicUseForCalls = true;
 
     private int pasteType = -1;
     private String pasteString;
@@ -175,6 +187,11 @@ public class ProxySettingsActivity extends BaseFragment {
     public ProxySettingsActivity(SharedConfig.ProxyInfo proxyInfo) {
         super();
         currentProxyInfo = proxyInfo;
+        if (proxyInfo.type == SharedConfig.PROXY_TYPE_TUIC && proxyInfo.tuicConfig != null) {
+            congestionControl = proxyInfo.tuicConfig.congestionControl;
+            tlsInsecure = proxyInfo.tuicConfig.tlsInsecure;
+            tuicUseForCalls = proxyInfo.useForCalls;
+        }
     }
 
     private ClipboardManager.OnPrimaryClipChangedListener clipChangedListener = this::updatePasteCell;
@@ -211,9 +228,55 @@ public class ProxySettingsActivity extends BaseFragment {
                     if (getParentActivity() == null) {
                         return;
                     }
+
+                    if (currentType == TYPE_TUIC) {
+                        // Build a TuicProxyConfig from current field values
+                        String server = inputFields[FIELD_IP].getText().toString();
+                        int port = Utilities.parseInt(inputFields[FIELD_PORT].getText().toString());
+                        String uuid = inputFields[FIELD_USER].getText().toString();
+                        String password = inputFields[FIELD_PASSWORD].getText().toString();
+                        TuicProxyConfig cfg = new TuicProxyConfig(server, port, uuid, password,
+                                congestionControl, tlsInsecure);
+                        SharedConfig.ProxyInfo tuicInfo;
+                        if (addingNewProxy) {
+                            tuicInfo = SharedConfig.ProxyInfo.forTuic(cfg, tuicUseForCalls);
+                        } else {
+                            // update existing proxy info in-place
+                            currentProxyInfo.address = server;
+                            currentProxyInfo.port = port;
+                            currentProxyInfo.tuicConfig = cfg;
+                            currentProxyInfo.useForCalls = tuicUseForCalls;
+                            tuicInfo = currentProxyInfo;
+                        }
+                        SharedPreferences preferences = MessagesController.getGlobalMainSettings();
+                        SharedPreferences.Editor editor = preferences.edit();
+                        boolean enabled;
+                        if (addingNewProxy) {
+                            SharedConfig.addProxy(tuicInfo);
+                            SharedConfig.currentProxy = tuicInfo;
+                            editor.putBoolean("proxy_enabled", true);
+                            enabled = true;
+                        } else {
+                            enabled = preferences.getBoolean("proxy_enabled", false);
+                            SharedConfig.saveProxyList();
+                        }
+                        if (addingNewProxy || SharedConfig.currentProxy == tuicInfo) {
+                            editor.putString("proxy_ip", tuicInfo.address);
+                            editor.putInt("proxy_port", tuicInfo.port);
+                            editor.putString("proxy_pass", "");
+                            editor.putString("proxy_user", "");
+                            editor.putString("proxy_secret", "");
+                            ConnectionsManager.setProxySettings(enabled, tuicInfo.address, tuicInfo.port, "", "", "");
+                        }
+                        editor.commit();
+                        NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.proxySettingsChanged);
+                        finishFragment();
+                        return;
+                    }
+
                     currentProxyInfo.address = inputFields[FIELD_IP].getText().toString();
                     currentProxyInfo.port = Utilities.parseInt(inputFields[FIELD_PORT].getText().toString());
-                    if (currentType == 0) {
+                    if (currentType == TYPE_SOCKS5) {
                         currentProxyInfo.secret = "";
                         currentProxyInfo.username = inputFields[FIELD_USER].getText().toString();
                         currentProxyInfo.password = inputFields[FIELD_PASSWORD].getText().toString();
@@ -272,14 +335,16 @@ public class ProxySettingsActivity extends BaseFragment {
 
         final View.OnClickListener typeCellClickListener = view -> setProxyType((Integer) view.getTag(), true);
 
-        for (int a = 0; a < 2; a++) {
+        for (int a = 0; a < 3; a++) {
             typeCell[a] = new RadioCell(context);
             typeCell[a].setBackground(Theme.getSelectorDrawable(true));
             typeCell[a].setTag(a);
-            if (a == 0) {
+            if (a == TYPE_SOCKS5) {
                 typeCell[a].setText(LocaleController.getString(R.string.UseProxySocks5), a == currentType, true);
+            } else if (a == TYPE_MTPROTO) {
+                typeCell[a].setText(LocaleController.getString(R.string.UseProxyTelegram), a == currentType, true);
             } else {
-                typeCell[a].setText(LocaleController.getString(R.string.UseProxyTelegram), a == currentType, false);
+                typeCell[a].setText(LocaleController.getString(R.string.UseProxyTuic), a == currentType, false);
             }
             linearLayout2.addView(typeCell[a], LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 50));
             typeCell[a].setOnClickListener(typeCellClickListener);
@@ -400,15 +465,24 @@ public class ProxySettingsActivity extends BaseFragment {
                     break;
                 case FIELD_PASSWORD:
                     inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyPassword));
-                    inputFields[a].setText(currentProxyInfo.password);
+                    if (currentProxyInfo.type == SharedConfig.PROXY_TYPE_TUIC && currentProxyInfo.tuicConfig != null) {
+                        inputFields[a].setText(currentProxyInfo.tuicConfig.password);
+                    } else {
+                        inputFields[a].setText(currentProxyInfo.password);
+                    }
                     break;
                 case FIELD_PORT:
                     inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyPort));
                     inputFields[a].setText("" + currentProxyInfo.port);
                     break;
                 case FIELD_USER:
+                    // hint text updated in setProxyType; pre-fill with username or TUIC uuid
                     inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyUsername));
-                    inputFields[a].setText(currentProxyInfo.username);
+                    if (currentProxyInfo.type == SharedConfig.PROXY_TYPE_TUIC && currentProxyInfo.tuicConfig != null) {
+                        inputFields[a].setText(currentProxyInfo.tuicConfig.uuid);
+                    } else {
+                        inputFields[a].setText(currentProxyInfo.username);
+                    }
                     break;
                 case FIELD_SECRET:
                     inputFields[a].setHintText(LocaleController.getString(R.string.UseProxySecret));
@@ -436,13 +510,46 @@ public class ProxySettingsActivity extends BaseFragment {
             });
         }
 
-        for (int i = 0; i < 2; i++) {
+        // TUIC-specific extra cells (congestion control, TLS insecure, use for calls)
+        congestionControlCell = new TextSettingsCell(context);
+        congestionControlCell.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+        congestionControlCell.setTextAndValue(
+                LocaleController.getString(R.string.UseProxyTuicCongestionControl),
+                congestionControl, true);
+        congestionControlCell.setOnClickListener(v -> showCongestionControlPicker());
+        linearLayout2.addView(congestionControlCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 50));
+        congestionControlCell.setVisibility(View.GONE);
+
+        tlsInsecureCell = new TextCheckCell(context);
+        tlsInsecureCell.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+        tlsInsecureCell.setTextAndCheck(LocaleController.getString(R.string.UseProxyTuicTlsInsecure), tlsInsecure, true);
+        tlsInsecureCell.setOnClickListener(v -> {
+            tlsInsecure = !tlsInsecure;
+            tlsInsecureCell.setChecked(tlsInsecure);
+        });
+        linearLayout2.addView(tlsInsecureCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 50));
+        tlsInsecureCell.setVisibility(View.GONE);
+
+        useForCallsCell = new TextCheckCell(context);
+        useForCallsCell.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+        useForCallsCell.setTextAndCheck(LocaleController.getString(R.string.UseProxyForCalls), tuicUseForCalls, false);
+        useForCallsCell.setOnClickListener(v -> {
+            tuicUseForCalls = !tuicUseForCalls;
+            useForCallsCell.setChecked(tuicUseForCalls);
+        });
+        linearLayout2.addView(useForCallsCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 50));
+        useForCallsCell.setVisibility(View.GONE);
+
+        for (int i = 0; i < 3; i++) {
             bottomCells[i] = new TextInfoPrivacyCell(context);
             bottomCells[i].setBackground(Theme.getThemedDrawableByKey(context, R.drawable.greydivider_bottom, Theme.key_windowBackgroundGrayShadow));
             if (i == 0) {
                 bottomCells[i].setText(LocaleController.getString(R.string.UseProxyInfo));
-            } else {
+            } else if (i == 1) {
                 bottomCells[i].setText(LocaleController.getString(R.string.UseProxyTelegramInfo) + "\n\n" + LocaleController.getString(R.string.UseProxyTelegramInfo2));
+                bottomCells[i].setVisibility(View.GONE);
+            } else {
+                bottomCells[i].setText(LocaleController.getString(R.string.UseProxyTuicInfo));
                 bottomCells[i].setVisibility(View.GONE);
             }
             linearLayout2.addView(bottomCells[i], LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
@@ -459,6 +566,9 @@ public class ProxySettingsActivity extends BaseFragment {
                         continue;
                     }
                     if (pasteType == TYPE_MTPROTO && (i == FIELD_USER || i == FIELD_PASSWORD)) {
+                        continue;
+                    }
+                    if (pasteType == TYPE_TUIC && i == FIELD_SECRET) {
                         continue;
                     }
                     if (pasteFields[i] != null) {
@@ -479,6 +589,9 @@ public class ProxySettingsActivity extends BaseFragment {
                             continue;
                         }
                         if (pasteType == TYPE_MTPROTO && i != FIELD_USER && i != FIELD_PASSWORD) {
+                            continue;
+                        }
+                        if (pasteType == TYPE_TUIC && i != FIELD_SECRET) {
                             continue;
                         }
                         inputFields[i].setText(null);
@@ -516,12 +629,32 @@ public class ProxySettingsActivity extends BaseFragment {
                     }
                     params.append("port=").append(URLEncoder.encode(port, "UTF-8"));
                 }
-                if (currentType == 1) {
+                if (currentType == TYPE_MTPROTO) {
                     url = "https://t.me/proxy?";
                     if (params.length() != 0) {
                         params.append("&");
                     }
                     params.append("secret=").append(URLEncoder.encode(secret, "UTF-8"));
+                } else if (currentType == TYPE_TUIC) {
+                    url = "https://t.me/tuic?";
+                    if (!TextUtils.isEmpty(user)) {
+                        if (params.length() != 0) {
+                            params.append("&");
+                        }
+                        params.append("uuid=").append(URLEncoder.encode(user, "UTF-8"));
+                    }
+                    if (!TextUtils.isEmpty(password)) {
+                        if (params.length() != 0) {
+                            params.append("&");
+                        }
+                        params.append("password=").append(URLEncoder.encode(password, "UTF-8"));
+                    }
+                    if (params.length() != 0) {
+                        params.append("&");
+                    }
+                    params.append("congestion_control=").append(URLEncoder.encode(congestionControl, "UTF-8"));
+                    params.append("&tls_insecure=").append(tlsInsecure ? "1" : "0");
+                    params.append("&calls=").append(tuicUseForCalls ? "1" : "0");
                 } else {
                     url = "https://t.me/socks?";
                     if (!TextUtils.isEmpty(user)) {
@@ -561,7 +694,15 @@ public class ProxySettingsActivity extends BaseFragment {
         checkShareDone(false);
 
         currentType = -1;
-        setProxyType(TextUtils.isEmpty(currentProxyInfo.secret) ? 0 : 1, false);
+        int initialType;
+        if (currentProxyInfo.type == SharedConfig.PROXY_TYPE_TUIC) {
+            initialType = TYPE_TUIC;
+        } else if (!TextUtils.isEmpty(currentProxyInfo.secret)) {
+            initialType = TYPE_MTPROTO;
+        } else {
+            initialType = TYPE_SOCKS5;
+        }
+        setProxyType(initialType, false);
 
         pasteType = -1;
         pasteString = null;
@@ -616,6 +757,18 @@ public class ProxySettingsActivity extends BaseFragment {
                 }
             }
 
+            if (params == null) {
+                final String[] tuicStrings = {"t.me/tuic?", "tg://tuic?"};
+                for (int i = 0; i < tuicStrings.length; i++) {
+                    final int index = clipText.indexOf(tuicStrings[i]);
+                    if (index >= 0) {
+                        pasteType = TYPE_TUIC;
+                        params = clipText.substring(index + tuicStrings[i].length()).split("&");
+                        break;
+                    }
+                }
+            }
+
             if (params != null) {
                 for (int i = 0; i < params.length; i++) {
                     final String[] pair = params[i].split("=");
@@ -640,6 +793,34 @@ public class ProxySettingsActivity extends BaseFragment {
                         case "secret":
                             if (pasteType == TYPE_MTPROTO) {
                                 pasteFields[FIELD_SECRET] = pair[1];
+                            }
+                            break;
+                        case "uuid":
+                            if (pasteType == TYPE_TUIC) {
+                                pasteFields[FIELD_USER] = pair[1];
+                            }
+                            break;
+                        case "password":
+                            if (pasteType == TYPE_TUIC) {
+                                pasteFields[FIELD_PASSWORD] = pair[1];
+                            }
+                            break;
+                        case "congestion_control":
+                            if (pasteType == TYPE_TUIC) {
+                                congestionControl = pair[1];
+                                if (congestionControlCell != null) {
+                                    congestionControlCell.setTextAndValue(
+                                            LocaleController.getString(R.string.UseProxyTuicCongestionControl),
+                                            congestionControl, true);
+                                }
+                            }
+                            break;
+                        case "tls_insecure":
+                            if (pasteType == TYPE_TUIC) {
+                                tlsInsecure = "1".equals(pair[1]);
+                                if (tlsInsecureCell != null) {
+                                    tlsInsecureCell.setChecked(tlsInsecure);
+                                }
                             }
                             break;
                     }
@@ -695,6 +876,25 @@ public class ProxySettingsActivity extends BaseFragment {
         setShareDoneEnabled(inputFields[FIELD_IP].length() != 0 && Utilities.parseInt(inputFields[FIELD_PORT].getText().toString()) != 0, animated);
     }
 
+    private static final String[] CONGESTION_CONTROL_VALUES = {"bbr", "cubic", "new-reno"};
+
+    private void showCongestionControlPicker() {
+        if (getParentActivity() == null) return;
+        AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
+        builder.setTitle(LocaleController.getString(R.string.UseProxyTuicCongestionControl));
+        CharSequence[] items = new CharSequence[CONGESTION_CONTROL_VALUES.length];
+        for (int i = 0; i < CONGESTION_CONTROL_VALUES.length; i++) {
+            items[i] = CONGESTION_CONTROL_VALUES[i];
+        }
+        builder.setItems(items, (dialog, which) -> {
+            congestionControl = CONGESTION_CONTROL_VALUES[which];
+            congestionControlCell.setTextAndValue(
+                    LocaleController.getString(R.string.UseProxyTuicCongestionControl),
+                    congestionControl, true);
+        });
+        showDialog(builder.create());
+    }
+
     private void setProxyType(int type, boolean animated) {
         setProxyType(type, animated, null);
     }
@@ -740,21 +940,44 @@ public class ProxySettingsActivity extends BaseFragment {
 
                 TransitionManager.beginDelayedTransition(linearLayout2, transitionSet);
             }
-            if (currentType == 0) {
+            if (currentType == TYPE_SOCKS5) {
                 bottomCells[0].setVisibility(View.VISIBLE);
                 bottomCells[1].setVisibility(View.GONE);
+                bottomCells[2].setVisibility(View.GONE);
                 ((View) inputFields[FIELD_SECRET].getParent()).setVisibility(View.GONE);
                 ((View) inputFields[FIELD_PASSWORD].getParent()).setVisibility(View.VISIBLE);
                 ((View) inputFields[FIELD_USER].getParent()).setVisibility(View.VISIBLE);
-            } else if (currentType == 1) {
+                inputFields[FIELD_USER].setHintText(LocaleController.getString(R.string.UseProxyUsername));
+                inputFields[FIELD_PASSWORD].setHintText(LocaleController.getString(R.string.UseProxyPassword));
+                congestionControlCell.setVisibility(View.GONE);
+                tlsInsecureCell.setVisibility(View.GONE);
+                useForCallsCell.setVisibility(View.GONE);
+            } else if (currentType == TYPE_MTPROTO) {
                 bottomCells[0].setVisibility(View.GONE);
                 bottomCells[1].setVisibility(View.VISIBLE);
+                bottomCells[2].setVisibility(View.GONE);
                 ((View) inputFields[FIELD_SECRET].getParent()).setVisibility(View.VISIBLE);
                 ((View) inputFields[FIELD_PASSWORD].getParent()).setVisibility(View.GONE);
                 ((View) inputFields[FIELD_USER].getParent()).setVisibility(View.GONE);
+                congestionControlCell.setVisibility(View.GONE);
+                tlsInsecureCell.setVisibility(View.GONE);
+                useForCallsCell.setVisibility(View.GONE);
+            } else if (currentType == TYPE_TUIC) {
+                bottomCells[0].setVisibility(View.GONE);
+                bottomCells[1].setVisibility(View.GONE);
+                bottomCells[2].setVisibility(View.VISIBLE);
+                ((View) inputFields[FIELD_SECRET].getParent()).setVisibility(View.GONE);
+                ((View) inputFields[FIELD_PASSWORD].getParent()).setVisibility(View.VISIBLE);
+                ((View) inputFields[FIELD_USER].getParent()).setVisibility(View.VISIBLE);
+                inputFields[FIELD_USER].setHintText(LocaleController.getString(R.string.UseProxyTuicUuid));
+                inputFields[FIELD_PASSWORD].setHintText(LocaleController.getString(R.string.UseProxyPassword));
+                congestionControlCell.setVisibility(View.VISIBLE);
+                tlsInsecureCell.setVisibility(View.VISIBLE);
+                useForCallsCell.setVisibility(View.VISIBLE);
             }
-            typeCell[0].setChecked(currentType == 0, animated);
-            typeCell[1].setChecked(currentType == 1, animated);
+            typeCell[0].setChecked(currentType == TYPE_SOCKS5, animated);
+            typeCell[1].setChecked(currentType == TYPE_MTPROTO, animated);
+            typeCell[2].setChecked(currentType == TYPE_TUIC, animated);
         }
     }
 
@@ -834,6 +1057,21 @@ public class ProxySettingsActivity extends BaseFragment {
             arrayList.add(new ThemeDescription(bottomCells[i], ThemeDescription.FLAG_BACKGROUNDFILTER, new Class[]{TextInfoPrivacyCell.class}, null, null, null, Theme.key_windowBackgroundGrayShadow));
             arrayList.add(new ThemeDescription(bottomCells[i], 0, new Class[]{TextInfoPrivacyCell.class}, new String[]{"textView"}, null, null, null, Theme.key_windowBackgroundWhiteGrayText4));
             arrayList.add(new ThemeDescription(bottomCells[i], ThemeDescription.FLAG_LINKCOLOR, new Class[]{TextInfoPrivacyCell.class}, new String[]{"textView"}, null, null, null, Theme.key_windowBackgroundWhiteLinkText));
+        }
+
+        // TUIC extra cells
+        if (congestionControlCell != null) {
+            arrayList.add(new ThemeDescription(congestionControlCell, ThemeDescription.FLAG_BACKGROUND, null, null, null, null, Theme.key_windowBackgroundWhite));
+            arrayList.add(new ThemeDescription(congestionControlCell, 0, new Class[]{TextSettingsCell.class}, new String[]{"textView"}, null, null, null, Theme.key_windowBackgroundWhiteBlackText));
+            arrayList.add(new ThemeDescription(congestionControlCell, 0, new Class[]{TextSettingsCell.class}, new String[]{"valueTextView"}, null, null, null, Theme.key_windowBackgroundWhiteValueText));
+        }
+        if (tlsInsecureCell != null) {
+            arrayList.add(new ThemeDescription(tlsInsecureCell, ThemeDescription.FLAG_BACKGROUND, null, null, null, null, Theme.key_windowBackgroundWhite));
+            arrayList.add(new ThemeDescription(tlsInsecureCell, 0, new Class[]{TextCheckCell.class}, new String[]{"textView"}, null, null, null, Theme.key_windowBackgroundWhiteBlackText));
+        }
+        if (useForCallsCell != null) {
+            arrayList.add(new ThemeDescription(useForCallsCell, ThemeDescription.FLAG_BACKGROUND, null, null, null, null, Theme.key_windowBackgroundWhite));
+            arrayList.add(new ThemeDescription(useForCallsCell, 0, new Class[]{TextCheckCell.class}, new String[]{"textView"}, null, null, null, Theme.key_windowBackgroundWhiteBlackText));
         }
 
         return arrayList;
