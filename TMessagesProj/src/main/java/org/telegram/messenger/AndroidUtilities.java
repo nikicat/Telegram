@@ -4894,6 +4894,7 @@ public class AndroidUtilities {
             SharedPreferences.Editor editor = MessagesController.getGlobalMainSettings().edit();
             editor.putBoolean("proxy_enabled", true);
             editor.apply();
+            ConnectionsManager.setProxySettings(true, address, p, "", "", "");
             NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.proxySettingsChanged);
             if (activity instanceof LaunchActivity) {
                 INavigationLayout layout = ((LaunchActivity) activity).getActionBarLayout();
