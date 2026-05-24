@@ -782,6 +782,7 @@ JNIEXPORT jlong JNICALL Java_org_telegram_messenger_voip_NativeInstance_makeNati
                     .receiveTimeout = configObject.getDoubleField("receiveTimeout"),
                     .dataSaving = parseDataSaving(env, configObject.getIntField("dataSaving")),
                     .enableP2P = configObject.getBooleanField("enableP2p") == JNI_TRUE,
+                    .allowTCP = true,
                     .enableStunMarking = configObject.getBooleanField("enableSm") == JNI_TRUE,
                     .enableAEC = configObject.getBooleanField("enableAec") == JNI_TRUE,
                     .enableNS = configObject.getBooleanField("enableNs") == JNI_TRUE,
