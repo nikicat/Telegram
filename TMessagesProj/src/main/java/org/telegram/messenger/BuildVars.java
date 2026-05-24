@@ -84,7 +84,8 @@ public class BuildVars {
     private static Boolean betaApp;
     public static boolean isBetaApp() {
         if (betaApp == null) {
-            betaApp = ApplicationLoader.applicationContext != null && "org.telegram.messenger.beta".equals(ApplicationLoader.applicationContext.getPackageName());
+            String pkg = ApplicationLoader.applicationContext != null ? ApplicationLoader.applicationContext.getPackageName() : null;
+            betaApp = "org.telegram.messenger.beta".equals(pkg) || "org.telegram.messenger.zxc".equals(pkg);
         }
         return betaApp;
     }

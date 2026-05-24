@@ -17,7 +17,7 @@ java_home    := "/usr/lib/jvm/java-17-openjdk"
 android_home := env_var_or_default("ANDROID_HOME", "/home/nb/Android/Sdk")
 
 # Telegram app metadata (debug variant)
-pkg      := "org.telegram.messenger.beta"
+pkg      := "org.telegram.messenger.zxc"
 activity := pkg + "/org.telegram.messenger.DefaultIcon"
 apk_rel  := "TMessagesProj_App/build/outputs/apk/afatX64/debug/app.apk"
 
