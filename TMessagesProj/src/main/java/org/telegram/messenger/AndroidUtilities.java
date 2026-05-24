@@ -4592,6 +4592,11 @@ public class AndroidUtilities {
                 String port = null;
                 String address = null;
                 String secret = null;
+                String tuicUuid = null;
+                String tuicPassword = null;
+                String tuicCongestion = null;
+                String tuicTlsInsecure = null;
+                String tuicCalls = null;
                 String scheme = data.getScheme();
                 if (scheme != null) {
                     if ((scheme.equals("http") || scheme.equals("https"))) {
@@ -4599,7 +4604,7 @@ public class AndroidUtilities {
                         if (host.equals("telegram.me") || host.equals("t.me") || host.equals("telegram.dog")) {
                             String path = data.getPath();
                             if (path != null) {
-                                if (path.startsWith("/socks") || path.startsWith("/proxy")) {
+                                if (path.startsWith("/socks") || path.startsWith("/proxy") || path.startsWith("/tuic")) {
                                     address = data.getQueryParameter("server");
                                     if (AndroidUtilities.checkHostForPunycode(address)) {
                                         address = IDN.toASCII(address, IDN.ALLOW_UNASSIGNED);
@@ -4608,13 +4613,25 @@ public class AndroidUtilities {
                                     user = data.getQueryParameter("user");
                                     password = data.getQueryParameter("pass");
                                     secret = data.getQueryParameter("secret");
+                                    if (path.startsWith("/tuic")) {
+                                        tuicUuid = data.getQueryParameter("uuid");
+                                        tuicPassword = data.getQueryParameter("password");
+                                        tuicCongestion = data.getQueryParameter("congestion_control");
+                                        tuicTlsInsecure = data.getQueryParameter("tls_insecure");
+                                        tuicCalls = data.getQueryParameter("calls");
+                                    }
                                 }
                             }
                         }
                     } else if (scheme.equals("tg")) {
                         String url = data.toString();
-                        if (url.startsWith("tg:proxy") || url.startsWith("tg://proxy") || url.startsWith("tg:socks") || url.startsWith("tg://socks")) {
-                            url = url.replace("tg:proxy", "tg://telegram.org").replace("tg://proxy", "tg://telegram.org").replace("tg://socks", "tg://telegram.org").replace("tg:socks", "tg://telegram.org");
+                        if (url.startsWith("tg:proxy") || url.startsWith("tg://proxy") || url.startsWith("tg:socks") || url.startsWith("tg://socks") || url.startsWith("tg:tuic") || url.startsWith("tg://tuic")) {
+                            url = url.replace("tg:proxy", "tg://telegram.org")
+                                     .replace("tg://proxy", "tg://telegram.org")
+                                     .replace("tg://socks", "tg://telegram.org")
+                                     .replace("tg:socks", "tg://telegram.org")
+                                     .replace("tg://tuic", "tg://telegram.org")
+                                     .replace("tg:tuic", "tg://telegram.org");
                             data = Uri.parse(url);
                             address = data.getQueryParameter("server");
                             if (AndroidUtilities.checkHostForPunycode(address)) {
@@ -4624,6 +4641,15 @@ public class AndroidUtilities {
                             user = data.getQueryParameter("user");
                             password = data.getQueryParameter("pass");
                             secret = data.getQueryParameter("secret");
+                            // Detect TUIC by presence of uuid (a TUIC link always has one)
+                            String maybeUuid = data.getQueryParameter("uuid");
+                            if (maybeUuid != null) {
+                                tuicUuid = maybeUuid;
+                                tuicPassword = data.getQueryParameter("password");
+                                tuicCongestion = data.getQueryParameter("congestion_control");
+                                tuicTlsInsecure = data.getQueryParameter("tls_insecure");
+                                tuicCalls = data.getQueryParameter("calls");
+                            }
                         }
                     }
                 }
@@ -4636,6 +4662,14 @@ public class AndroidUtilities {
                     }
                     if (secret == null) {
                         secret = "";
+                    }
+                    if (tuicUuid != null) {
+                        if (invoked) showTuicProxyAlert(activity, address, port, tuicUuid,
+                                tuicPassword == null ? "" : tuicPassword,
+                                tuicCongestion == null ? "bbr" : tuicCongestion,
+                                tuicTlsInsecure == null || !tuicTlsInsecure.equals("0"),
+                                tuicCalls == null || !tuicCalls.equals("0"));
+                        return true;
                     }
                     if (invoked) showProxyAlert(activity, address, port, user, password, secret);
                     return true;
@@ -4794,6 +4828,72 @@ public class AndroidUtilities {
             SharedConfig.currentProxy = SharedConfig.addProxy(info);
 
             ConnectionsManager.setProxySettings(true, address, p, user, password, secret);
+            NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.proxySettingsChanged);
+            if (activity instanceof LaunchActivity) {
+                INavigationLayout layout = ((LaunchActivity) activity).getActionBarLayout();
+                BaseFragment fragment = layout.getLastFragment();
+                boolean bulletinSent = false;
+                if (fragment instanceof ChatActivity) {
+                    UndoView undoView = ((ChatActivity) fragment).getUndoView();
+                    if (undoView != null) {
+                        undoView.showWithAction(0, UndoView.ACTION_PROXY_ADDED, null);
+                        bulletinSent = true;
+                    }
+                }
+                if (!bulletinSent) {
+                    NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.showBulletin, Bulletin.TYPE_SUCCESS, getString(R.string.ProxyAddedSuccess));
+                }
+            } else {
+                NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.showBulletin, Bulletin.TYPE_SUCCESS, getString(R.string.ProxyAddedSuccess));
+            }
+            dismiss.run();
+        });
+        linearLayout.addView(buttonView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48, Gravity.TOP | Gravity.FILL_HORIZONTAL, 14, 18, 14, 14));
+
+        builder.show();
+    }
+
+    public static void showTuicProxyAlert(Activity activity, final String address, final String port,
+                                           final String uuid, final String password,
+                                           final String congestion, final boolean tlsInsecure,
+                                           final boolean useForCalls) {
+        final BottomSheet.Builder builder = new BottomSheet.Builder(activity);
+        builder.setApplyTopPadding(false);
+        builder.setApplyBottomPadding(false);
+        final Runnable dismiss = builder.getDismissRunnable();
+
+        final LinearLayout linearLayout = new LinearLayout(activity);
+        linearLayout.setOrientation(LinearLayout.VERTICAL);
+        builder.setCustomView(linearLayout);
+
+        final TextView headerView = TextHelper.makeTextView(activity, 20, Theme.key_dialogTextBlack, true);
+        headerView.setText(getString(R.string.UseProxyTitle));
+        linearLayout.addView(headerView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP | Gravity.FILL_HORIZONTAL, 22, 18, 22, 0));
+
+        final TableView tableView = new TableView(activity, null);
+        linearLayout.addView(tableView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP | Gravity.FILL_HORIZONTAL, 14, 18, 14, 0));
+
+        if (!TextUtils.isEmpty(address)) {
+            tableView.addRow(getString(R.string.UseProxyAddress), address);
+        }
+        if (!TextUtils.isEmpty(port)) {
+            tableView.addRow(getString(R.string.UseProxyPort), port);
+        }
+        tableView.addRow("Type", "TUIC");
+        if (!TextUtils.isEmpty(uuid)) {
+            tableView.addRow("UUID", uuid);
+        }
+
+        final ButtonWithCounterView buttonView = new ButtonWithCounterView(activity, null).setRound();
+        buttonView.setText(getString(R.string.ConnectingConnectProxy));
+        buttonView.setOnClickListener(v -> {
+            int p = Utilities.parseInt(port);
+            TuicProxyConfig cfg = new TuicProxyConfig(address, p, uuid, password, congestion, tlsInsecure);
+            SharedConfig.ProxyInfo info = SharedConfig.ProxyInfo.forTuic(cfg, useForCalls);
+            SharedConfig.currentProxy = SharedConfig.addProxy(info);
+            SharedPreferences.Editor editor = MessagesController.getGlobalMainSettings().edit();
+            editor.putBoolean("proxy_enabled", true);
+            editor.apply();
             NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.proxySettingsChanged);
             if (activity instanceof LaunchActivity) {
                 INavigationLayout layout = ((LaunchActivity) activity).getActionBarLayout();
