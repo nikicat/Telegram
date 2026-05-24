@@ -21,4 +21,8 @@ public class TuicProxyConfig {
     public String identity() {
         return server + ":" + port + ":" + uuid;
     }
+
+    public tgx.singbox.TuicConfig toKotlin() {
+        return new tgx.singbox.TuicConfig(server, port, uuid, password, congestionControl, tlsInsecure);
+    }
 }
