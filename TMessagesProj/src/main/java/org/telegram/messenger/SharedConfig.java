@@ -55,7 +55,12 @@ public class SharedConfig {
      * V2: Ping and check time serialized
      */
     private final static int PROXY_SCHEMA_V2 = 2;
-    private final static int PROXY_CURRENT_SCHEMA_VERSION = PROXY_SCHEMA_V2;
+    private final static int PROXY_SCHEMA_V3 = 3;
+    private final static int PROXY_CURRENT_SCHEMA_VERSION = PROXY_SCHEMA_V3;
+
+    public static final int PROXY_TYPE_MTPROTO = 0;
+    public static final int PROXY_TYPE_SOCKS5 = 1;
+    public static final int PROXY_TYPE_TUIC = 2;
 
     public final static int PASSCODE_TYPE_PIN = 0,
             PASSCODE_TYPE_PASSWORD = 1;
@@ -380,6 +385,9 @@ public class SharedConfig {
         public String username;
         public String password;
         public String secret;
+        public int type;                       // PROXY_TYPE_* constant
+        public TuicProxyConfig tuicConfig;     // non-null iff type == PROXY_TYPE_TUIC
+        public boolean useForCalls;
 
         public long proxyCheckPingId;
         public long ping;
@@ -405,6 +413,17 @@ public class SharedConfig {
             if (this.secret == null) {
                 this.secret = "";
             }
+            this.type = TextUtils.isEmpty(this.secret) ? PROXY_TYPE_SOCKS5 : PROXY_TYPE_MTPROTO;
+            this.tuicConfig = null;
+            this.useForCalls = false;
+        }
+
+        public static ProxyInfo forTuic(TuicProxyConfig cfg, boolean useForCalls) {
+            ProxyInfo info = new ProxyInfo(cfg.server, cfg.port, "", "", "");
+            info.type = PROXY_TYPE_TUIC;
+            info.tuicConfig = cfg;
+            info.useForCalls = useForCalls;
+            return info;
         }
 
         public String getLink() {
@@ -1449,9 +1468,10 @@ public class SharedConfig {
             if (count == -1) { // V2 or newer
                 int version = data.readByte(false);
 
-                if (version == PROXY_SCHEMA_V2) {
-                    count = data.readInt32(false);
+                boolean legacyCallsFlag = preferences.getBoolean("proxy_enabled_calls", false);
 
+                if (version == PROXY_SCHEMA_V2 || version == PROXY_SCHEMA_V3) {
+                    count = data.readInt32(false);
                     for (int i = 0; i < count; i++) {
                         ProxyInfo info = new ProxyInfo(
                                 data.readString(false),
@@ -1462,6 +1482,23 @@ public class SharedConfig {
 
                         info.ping = data.readInt64(false);
                         info.availableCheckTime = data.readInt64(false);
+
+                        if (version >= PROXY_SCHEMA_V3) {
+                            info.type = data.readInt32(false);
+                            info.useForCalls = data.readBool(false);
+                            if (info.type == PROXY_TYPE_TUIC) {
+                                info.tuicConfig = new TuicProxyConfig(
+                                        data.readString(false),
+                                        data.readInt32(false),
+                                        data.readString(false),
+                                        data.readString(false),
+                                        data.readString(false),
+                                        data.readBool(false));
+                            }
+                        } else {
+                            // V2 -> V3 migration: derive type from secret; carry over global flag
+                            info.useForCalls = legacyCallsFlag;
+                        }
 
                         proxyList.add(0, info);
                         if (currentProxy == null && !TextUtils.isEmpty(proxyAddress)) {
@@ -1525,6 +1562,17 @@ public class SharedConfig {
 
             serializedData.writeInt64(info.ping);
             serializedData.writeInt64(info.availableCheckTime);
+            serializedData.writeInt32(info.type);
+            serializedData.writeBool(info.useForCalls);
+            if (info.type == PROXY_TYPE_TUIC && info.tuicConfig != null) {
+                TuicProxyConfig c = info.tuicConfig;
+                serializedData.writeString(c.server);
+                serializedData.writeInt32(c.port);
+                serializedData.writeString(c.uuid);
+                serializedData.writeString(c.password);
+                serializedData.writeString(c.congestionControl);
+                serializedData.writeBool(c.tlsInsecure);
+            }
         }
         SharedPreferences preferences = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE);
         preferences.edit().putString("proxy_list", Base64.encodeToString(serializedData.toByteArray(), Base64.NO_WRAP)).apply();
@@ -1536,8 +1584,19 @@ public class SharedConfig {
         int count = proxyList.size();
         for (int a = 0; a < count; a++) {
             ProxyInfo info = proxyList.get(a);
-            if (proxyInfo.address.equals(info.address) && proxyInfo.port == info.port && proxyInfo.username.equals(info.username) && proxyInfo.password.equals(info.password) && proxyInfo.secret.equals(info.secret)) {
-                return info;
+            if (info.type != proxyInfo.type) continue;
+            if (proxyInfo.type == PROXY_TYPE_TUIC) {
+                if (proxyInfo.tuicConfig != null && info.tuicConfig != null
+                        && proxyInfo.tuicConfig.identity().equals(info.tuicConfig.identity())) {
+                    return info;
+                }
+            } else {
+                if (proxyInfo.address.equals(info.address) && proxyInfo.port == info.port
+                        && proxyInfo.username.equals(info.username)
+                        && proxyInfo.password.equals(info.password)
+                        && proxyInfo.secret.equals(info.secret)) {
+                    return info;
+                }
             }
         }
         proxyList.add(0, proxyInfo);
