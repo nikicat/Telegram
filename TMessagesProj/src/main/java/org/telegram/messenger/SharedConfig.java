@@ -427,18 +427,28 @@ public class SharedConfig {
         }
 
         public String getLink() {
-            StringBuilder url = new StringBuilder(!TextUtils.isEmpty(secret) ? "https://t.me/proxy?" : "https://t.me/socks?");
+            StringBuilder url;
+            if (type == PROXY_TYPE_TUIC && tuicConfig != null) {
+                url = new StringBuilder("https://t.me/tuic?");
+                try {
+                    url.append("server=").append(URLEncoder.encode(tuicConfig.server, "UTF-8"));
+                    url.append("&port=").append(tuicConfig.port);
+                    url.append("&uuid=").append(URLEncoder.encode(tuicConfig.uuid, "UTF-8"));
+                    url.append("&password=").append(URLEncoder.encode(tuicConfig.password, "UTF-8"));
+                    url.append("&congestion_control=").append(URLEncoder.encode(tuicConfig.congestionControl, "UTF-8"));
+                    url.append("&tls_insecure=").append(tuicConfig.tlsInsecure ? "1" : "0");
+                    url.append("&calls=").append(useForCalls ? "1" : "0");
+                } catch (UnsupportedEncodingException ignored) {}
+                return url.toString();
+            }
+
+            url = new StringBuilder(!TextUtils.isEmpty(secret) ? "https://t.me/proxy?" : "https://t.me/socks?");
             try {
-                url.append("server=").append(URLEncoder.encode(address, "UTF-8")).append("&").append("port=").append(port);
-                if (!TextUtils.isEmpty(username)) {
-                    url.append("&user=").append(URLEncoder.encode(username, "UTF-8"));
-                }
-                if (!TextUtils.isEmpty(password)) {
-                    url.append("&pass=").append(URLEncoder.encode(password, "UTF-8"));
-                }
-                if (!TextUtils.isEmpty(secret)) {
-                    url.append("&secret=").append(URLEncoder.encode(secret, "UTF-8"));
-                }
+                url.append("server=").append(URLEncoder.encode(address, "UTF-8")).append("&port=").append(port);
+                if (!TextUtils.isEmpty(username)) url.append("&user=").append(URLEncoder.encode(username, "UTF-8"));
+                if (!TextUtils.isEmpty(password)) url.append("&pass=").append(URLEncoder.encode(password, "UTF-8"));
+                if (!TextUtils.isEmpty(secret)) url.append("&secret=").append(URLEncoder.encode(secret, "UTF-8"));
+                url.append("&calls=").append(useForCalls ? "1" : "0");
             } catch (UnsupportedEncodingException ignored) {}
             return url.toString();
         }
