@@ -140,6 +140,8 @@ android {
             buildConfigField "boolean", "BUNDLE", "false"
             buildConfigField "boolean", "BUILD_HOST_IS_WINDOWS", isWindows
             buildConfigField "int", "VERSION_NUM", "0"
+            def defaultProxyLink = project.findProperty('default.proxy.link') ?: ''
+            buildConfigField "String", "DEFAULT_PROXY_LINK", "\"" + defaultProxyLink + "\""
         }
 
         HA_private {
