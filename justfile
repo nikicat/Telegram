@@ -29,8 +29,17 @@ default:
 
 # ----- build -----
 
+# build the singbox gomobile AAR (~75 MB, gitignored; required by :apk)
+singbox:
+    env GO111MODULE=on PATH=$(go env GOPATH)/bin:$PATH \
+        bash singbox/go/build.sh
+
+# build singbox AAR only if it doesn't exist yet (idempotent guard for apk)
+singbox-if-missing:
+    test -f singbox/libs/singboxbridge.aar || just singbox
+
 # build the x86_64 debug APK (incremental; Gradle daemon stays warm)
-apk:
+apk: singbox-if-missing
     env JAVA_HOME={{java_home}} \
         ANDROID_HOME={{android_home}} \
         ANDROID_SDK_ROOT={{android_home}} \

@@ -5,6 +5,11 @@ plugins {
   kotlin("android")
 }
 
+repositories {
+  google()
+  mavenCentral()
+}
+
 val buildSingboxAar = tasks.register<Exec>("buildSingboxAar") {
   group = "build"
   description = "Builds singboxbridge.aar from Go sources via gomobile (runs only when sources change)"
@@ -47,5 +52,9 @@ android {
     sourceCompatibility = JavaVersion.VERSION_1_8
     targetCompatibility = JavaVersion.VERSION_1_8
     isCoreLibraryDesugaringEnabled = true
+  }
+
+  kotlinOptions {
+    jvmTarget = "1.8"
   }
 }
