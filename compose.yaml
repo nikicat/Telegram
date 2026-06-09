@@ -1,6 +1,22 @@
 # Adapted from ../Telegram-X/compose.yaml.
 # Host ADB port is 5556 (Telegram-X uses 5555) so both redroid containers
 # can run concurrently on the same host.
+#
+# HOST PREREQUISITES (rootful podman — run with `sudo podman-compose up -d`):
+#   1. subuid/subgid range for your user, so the image's Android UIDs/GIDs can
+#      be mapped (otherwise `podman pull`/unpack fails with lchown errors):
+#        sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 $USER
+#        podman system migrate
+#   2. loop + dm-verity kernel modules loaded, so apexd can mount the APEX
+#      images. Without them the container exits immediately (status 129) before
+#      Android even logs. Persisted in /etc/modules-load.d/redroid.conf:
+#        loop
+#        dm-verity
+#
+# GPU: this host has an NVIDIA proprietary driver, which redroid's in-container
+# mesa stack can't drive (host mode -> SurfaceFlinger "no suitable EGLConfig"
+# crash loop). So we use guest (software/ANGLE) rendering below. See the
+# `command:` block and https://github.com/remote-android/redroid-doc/issues/282
 
 services:
   redroid:
@@ -36,8 +52,16 @@ services:
     # Android's init ignores SIGRTMIN+3 (image default), skip the 10s timeout
     stop_signal: SIGKILL
     command:
-      - androidboot.redroid_gpu_mode=host
-      - androidboot.redroid_gpu_node=/dev/dri/renderD128
+      # host mode needs a mesa driver (Intel/AMD). The NVIDIA proprietary driver
+      # isn't usable by redroid's in-container mesa EGL/gralloc, so SurfaceFlinger
+      # crashes ("no suitable EGLConfig") and boot loops. See redroid-doc#282.
+      # For a mesa GPU, swap back to:
+      #   - androidboot.redroid_gpu_mode=host
+      #   - androidboot.redroid_gpu_node=/dev/dri/renderD128
+      # guest = software rendering (works everywhere, no GPU accel). This image
+      # routes guest mode through ANGLE (ro.hardware.egl=angle), the fastest
+      # software path here. For real NVIDIA accel, use a virtio-gpu VM (#282).
+      - androidboot.redroid_gpu_mode=guest
       - androidboot.use_memfd=true
       # Uncomment to customize display:
       # - androidboot.redroid_width=1080
