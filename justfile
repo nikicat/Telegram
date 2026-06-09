@@ -71,6 +71,23 @@ down:
 # down + up
 restart: down up
 
+# apply nftables-redroid.conf to restrict container traffic to the TUIC proxy
+# (host/port derived from default.proxy.link in local.properties; port -> 443 if absent)
+firewall:
+    @LINK=$(grep -E '^default\.proxy\.link=' local.properties | cut -d= -f2-) && \
+        HOST=$(echo "$LINK" | sed -n 's/.*[?&]server=\([^&]*\).*/\1/p') && \
+        PORT=$(echo "$LINK" | sed -n 's/.*[?&]port=\([^&]*\).*/\1/p') && \
+        PORT=${PORT:-443} && \
+        if [ -z "$HOST" ]; then echo "firewall: could not parse server= from default.proxy.link in local.properties" >&2; exit 1; fi && \
+        BRIDGE=$(sudo podman network inspect {{network}} | python3 -c "import json,sys;print(json.load(sys.stdin)[0]['network_interface'])") && \
+        echo "Applying firewall to bridge $BRIDGE for $HOST:$PORT" && \
+        sudo nft delete table inet redroid_fw 2>/dev/null; \
+        sudo nft -f nftables-redroid.conf -D REDROID_BRIDGE=$BRIDGE -D TUIC_HOST=$HOST -D TUIC_PORT=$PORT
+
+# remove firewall rules
+unfirewall:
+    -sudo nft delete table inet redroid_fw
+
 # wait until Android finishes booting on the container
 boot:
     @echo "Waiting for Android boot on {{redroid}}..."
@@ -84,11 +101,11 @@ boot:
     done; \
     echo "Timeout waiting for boot"; exit 1
 
-# up + wait for boot
-start: up boot
+# up + firewall + wait for boot
+start: up firewall boot
 
-# stop the container (alias)
-stop: down
+# unfirewall + down
+stop: unfirewall down
 
 # show container status and Android boot state
 status:
@@ -102,7 +119,7 @@ logs:
     sudo podman logs -f {{container}}
 
 # stop container and wipe ./redroid-data (factory reset)
-nuke: down
+nuke: stop
     sudo rm -rf ./redroid-data
 
 # ----- device interaction -----
