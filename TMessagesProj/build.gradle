@@ -116,6 +116,11 @@ android {
 
         multiDexEnabled true
 
+        // Telegram API credentials. Override via telegram.api_id / telegram.api_hash in local.properties;
+        // defaults match what was previously hardcoded in BuildVars.java.
+        buildConfigField "int", "TELEGRAM_API_ID", (getProps('telegram.api_id') ?: '9188726')
+        buildConfigField "String", "TELEGRAM_API_HASH", "\"" + (getProps('telegram.api_hash') ?: '73bb724be6321514a0ae25ef6100ab13') + "\""
+
         externalNativeBuild {
             cmake {
                 version '3.10.2'

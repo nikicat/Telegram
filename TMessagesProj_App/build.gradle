@@ -20,6 +20,12 @@ dependencies {
     implementation files('../TMessagesProj/libs/libgsaverification-client.aar')
 }
 
+// Read local.properties (gitignored, per-machine overrides).
+def _localProps = new Properties()
+def _localFile = rootProject.file('local.properties')
+if (_localFile.exists()) _localProps.load(new FileInputStream(_localFile))
+def localProp = { String k -> _localProps.getProperty(k) }
+
 // Resolve signing config: prefer local.properties -> keystore.file -> debug.properties chain
 // (mirroring Telegram-X); fall back to gradle.properties RELEASE_* + bundled release.keystore.
 def _signingFromLocalProps = {
@@ -41,7 +47,10 @@ android {
     compileSdkVersion 35
     buildToolsVersion '35.0.0'
 
-    defaultConfig.applicationId = APP_PACKAGE
+    // app.id overrides APP_PACKAGE; applicationIdSuffix (.zxc/.web) still applies on top.
+    defaultConfig.applicationId = localProp('app.id') ?: APP_PACKAGE
+    // app.name overrides ${appLabel} in debug manifests; release manifests still use @string/AppName.
+    defaultConfig.manifestPlaceholders = [appLabel: localProp('app.name') ?: '@string/AppNameBeta']
 
     sourceSets.main.jniLibs.srcDirs = ['../TMessagesProj/jni/']
 
