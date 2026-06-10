@@ -22,6 +22,11 @@ activity := pkg + "/org.telegram.messenger.DefaultIcon"
 
 _adb_redroid := "adb -s " + redroid
 
+# Build matrix. Override BEFORE the recipe name, e.g. `just abi=Arm64 apk`, `just build=Release run`.
+#   abi: X64|Arm64   build: Debug|Release|Standalone   (defaults match the redroid inner loop)
+abi   := "X64"
+build := "Debug"
+
 # Default recipe: list available recipes.
 default:
     @just --list
@@ -37,8 +42,8 @@ singbox:
 singbox-if-missing:
     test -f singbox/libs/singboxbridge.aar || just singbox
 
-# build APK. abi: X64|Arm64  build: Debug|Release|Standalone (defaults match redroid inner loop)
-apk abi="X64" build="Debug": singbox-if-missing
+# build APK (honors the abi/build vars; override with e.g. `just abi=Arm64 apk`)
+apk: singbox-if-missing
     env JAVA_HOME={{java_home}} \
         ANDROID_HOME={{android_home}} \
         ANDROID_SDK_ROOT={{android_home}} \
@@ -53,8 +58,8 @@ clean-build:
         PATH={{java_home}}/bin:$PATH \
         ./gradlew :TMessagesProj_App:clean
 
-# print absolute path to the built APK (does not build). Same args as `apk`.
-apk-path abi="X64" build="Debug":
+# print absolute path to the built APK (does not build). Honors the abi/build vars.
+apk-path:
     @realpath TMessagesProj_App/build/outputs/apk/afat{{abi}}/$(echo {{build}} | tr A-Z a-z)/app.apk
 
 # ----- redroid lifecycle -----
@@ -136,12 +141,12 @@ scrcpy device=redroid: (adb device)
 
 # ----- app lifecycle on DEVICE -----
 
-# build + install the APK on DEVICE. Same abi/build args as `apk`.
-install abi="X64" build="Debug" device=redroid: (apk abi build) (adb device)
+# build + install the APK on DEVICE. Honors the abi/build vars (e.g. `just abi=Arm64 install`).
+install device=redroid: apk (adb device)
     adb -s {{device}} install -r TMessagesProj_App/build/outputs/apk/afat{{abi}}/$(echo {{build}} | tr A-Z a-z)/app.apk
 
-# install without rebuilding (uses whatever APK is on disk)
-install-only abi="X64" build="Debug" device=redroid: (adb device)
+# install without rebuilding (uses whatever APK is on disk). Honors the abi/build vars.
+install-only device=redroid: (adb device)
     adb -s {{device}} install -r TMessagesProj_App/build/outputs/apk/afat{{abi}}/$(echo {{build}} | tr A-Z a-z)/app.apk
 
 # launch the app on DEVICE (does not build/install)
@@ -160,8 +165,8 @@ wipe device=redroid: (adb device)
 uninstall device=redroid: (adb device)
     -adb -s {{device}} uninstall {{pkg}}
 
-# full inner loop (X64 Debug): build, install, kill old, launch
-run device=redroid: (install "X64" "Debug" device) (kill device) (launch device)
+# full inner loop: build, install, kill old, launch (honors abi/build vars; defaults X64 Debug)
+run device=redroid: (install device) (kill device) (launch device)
 
 # follow Telegram-relevant logcat tags on DEVICE
 logcat device=redroid: (adb device)
