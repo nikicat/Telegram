@@ -3024,6 +3024,8 @@ public class Theme {
     };
 
     public static int DEFALT_THEME_ACCENT_ID = 99;
+    // Purplegram: accent selected by default for the default day theme on a fresh install — built-in purple #8854B4 (id 14).
+    public static int BRAND_DEFAULT_ACCENT_ID = 14;
     public static int selectedAutoNightType = AUTO_NIGHT_TYPE_NONE;
     public static boolean autoNightScheduleByLocation;
     public static float autoNightBrighnessThreshold = 0.25f;
@@ -4809,7 +4811,7 @@ public class Theme {
             for (ThemeInfo info : themesDict.values()) {
                 if (info.assetName != null && info.accentBaseColor != 0) {
                     String accents = themeConfig.getString("accents_" + info.assetName, null);
-                    info.currentAccentId = themeConfig.getInt("accent_current_" + info.assetName, info.firstAccentIsDefault ? DEFALT_THEME_ACCENT_ID : 0);
+                    info.currentAccentId = themeConfig.getInt("accent_current_" + info.assetName, info.firstAccentIsDefault ? BRAND_DEFAULT_ACCENT_ID : 0);
                     ArrayList<ThemeAccent> newAccents = new ArrayList<>();
                     if (!TextUtils.isEmpty(accents)) {
                         try {
@@ -4943,7 +4945,7 @@ public class Theme {
                         sortAccents(info);
                     }
                     if (info.themeAccentsMap != null && info.themeAccentsMap.get(info.currentAccentId) == null) {
-                        info.currentAccentId = info.firstAccentIsDefault ? DEFALT_THEME_ACCENT_ID : 0;
+                        info.currentAccentId = info.firstAccentIsDefault ? BRAND_DEFAULT_ACCENT_ID : 0;
                     }
                     info.loadWallpapers(themeConfig);
                     ThemeAccent accent = info.getAccent(false);
