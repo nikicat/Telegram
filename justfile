@@ -16,8 +16,9 @@ redroid   := "localhost:" + adb_port
 java_home    := "/usr/lib/jvm/java-17-openjdk"
 android_home := env_var_or_default("ANDROID_HOME", "/home/nb/Android/Sdk")
 
-# Telegram app metadata (debug variant — kill/launch/wipe/uninstall use this pkg)
-pkg      := "org.telegram.messenger.zxc"
+# Telegram app metadata (debug variant — kill/launch/wipe/uninstall use this pkg).
+# Derived from app.id in local.properties (+ debug suffix); falls back to the upstream package.
+pkg      := `id="$(grep -E '^app\.id=' local.properties 2>/dev/null | cut -d= -f2-)"; echo "${id:-org.telegram.messenger}.debug"`
 activity := pkg + "/org.telegram.messenger.DefaultIcon"
 
 _adb_redroid := "adb -s " + redroid

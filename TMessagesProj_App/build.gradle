@@ -47,7 +47,7 @@ android {
     compileSdkVersion 35
     buildToolsVersion '35.0.0'
 
-    // app.id overrides APP_PACKAGE; applicationIdSuffix (.zxc/.web) still applies on top.
+    // app.id overrides APP_PACKAGE; applicationIdSuffix (.debug/.web) still applies on top.
     defaultConfig.applicationId = localProp('app.id') ?: APP_PACKAGE
     // app.name overrides ${appLabel} in debug manifests; release manifests still use @string/AppName.
     defaultConfig.manifestPlaceholders = [appLabel: localProp('app.name') ?: '@string/AppNameBeta']
@@ -88,7 +88,7 @@ android {
             debuggable true
             jniDebuggable true
             signingConfig signingConfigs.debug
-            applicationIdSuffix ".zxc"
+            applicationIdSuffix ".debug"
             minifyEnabled false
             shrinkResources false
             multiDexEnabled true
