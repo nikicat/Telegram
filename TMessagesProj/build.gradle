@@ -121,6 +121,10 @@ android {
         buildConfigField "int", "TELEGRAM_API_ID", (getProps('telegram.api_id') ?: '9188726')
         buildConfigField "String", "TELEGRAM_API_HASH", "\"" + (getProps('telegram.api_hash') ?: '73bb724be6321514a0ae25ef6100ab13') + "\""
 
+        // Default proxy baked into the build, applied on first launch. From default.proxy.link in local.properties.
+        // In defaultConfig (not just debug) so release/standalone also compile ApplicationLoader's reference.
+        buildConfigField "String", "DEFAULT_PROXY_LINK", "\"" + (getProps('default.proxy.link') ?: '') + "\""
+
         externalNativeBuild {
             cmake {
                 version '3.10.2'
@@ -145,7 +149,6 @@ android {
             buildConfigField "boolean", "BUNDLE", "false"
             buildConfigField "boolean", "BUILD_HOST_IS_WINDOWS", isWindows
             buildConfigField "int", "VERSION_NUM", "0"
-            buildConfigField "String", "DEFAULT_PROXY_LINK", "\"" + (getProps('default.proxy.link') ?: '') + "\""
         }
 
         HA_private {
@@ -197,6 +200,9 @@ android {
         }
 
         standalone {
+            // :singbox has no 'standalone' build type; fall back to its 'release' variant so this
+            // build type (and the release build, which shares the RelWithDebInfo native task) resolves.
+            matchingFallbacks = ['release']
             jniDebuggable false
             minifyEnabled true
             multiDexEnabled true
