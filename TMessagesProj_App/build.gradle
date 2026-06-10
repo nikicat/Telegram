@@ -260,4 +260,25 @@ android {
     }
 }
 
-apply plugin: 'com.google.gms.google-services'
+// ----- Firebase / Google Services -----
+// google-services.json is gitignored and staged here before the plugin runs, so a custom app.id
+// can ship its own Firebase project without dirtying the tracked default:
+//   * no app.id override        -> google-services.default.json (org.telegram.messenger*); upstream/CI unchanged.
+//   * app.id + google-services.file (local.properties) -> your own Firebase config (must match app.id + suffix).
+//   * app.id + no google-services.file                 -> skip the plugin (build works; Firebase/push disabled).
+def _gsCustomAppId = localProp('app.id')
+def _gsCustomFile = localProp('google-services.file')
+def _gsSource = !_gsCustomAppId ? file("$projectDir/google-services.default.json")
+        : (_gsCustomFile ? file(_gsCustomFile) : null)
+if (_gsSource != null) {
+    if (!_gsSource.exists()) throw new GradleException("google-services source not found: $_gsSource")
+    copy {
+        from _gsSource
+        into projectDir
+        rename { 'google-services.json' }
+    }
+    apply plugin: 'com.google.gms.google-services'
+} else {
+    logger.warn("app.id is set but google-services.file is not — skipping Google Services plugin " +
+            "(Firebase/push disabled). Set google-services.file in local.properties to use your own Firebase.")
+}

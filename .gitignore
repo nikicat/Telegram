@@ -5,6 +5,8 @@ obj/
 *.iml
 local.properties
 /keystore/
+# Staged at build time from google-services.default.json or local.properties' google-services.file.
+TMessagesProj_App/google-services.json
 TMessagesProj/.cxx/
 TMessagesProj/jniLibs/
 TMessagesProj/jniRes/
