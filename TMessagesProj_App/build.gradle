@@ -20,6 +20,23 @@ dependencies {
     implementation files('../TMessagesProj/libs/libgsaverification-client.aar')
 }
 
+// Resolve signing config: prefer local.properties -> keystore.file -> debug.properties chain
+// (mirroring Telegram-X); fall back to gradle.properties RELEASE_* + bundled release.keystore.
+def _signingFromLocalProps = {
+    def local = rootProject.file('local.properties')
+    if (!local.exists()) return null
+    def lp = new Properties(); lp.load(new FileInputStream(local))
+    def ksPath = lp['keystore.file']; if (!ksPath) return null
+    def ksFile = new File(ksPath as String); if (!ksFile.exists()) return null
+    def ks = new Properties(); ks.load(new FileInputStream(ksFile))
+    return [
+        storeFile    : file(ks['keystore.file']),
+        storePassword: ks['keystore.password'],
+        keyAlias     : ks['key.alias'],
+        keyPassword  : ks['key.password'],
+    ]
+}()
+
 android {
     compileSdkVersion 35
     buildToolsVersion '35.0.0'
@@ -43,17 +60,17 @@ android {
 
     signingConfigs {
         debug {
-            storeFile file("../TMessagesProj/config/release.keystore")
-            storePassword RELEASE_STORE_PASSWORD
-            keyAlias RELEASE_KEY_ALIAS
-            keyPassword RELEASE_KEY_PASSWORD
+            storeFile     _signingFromLocalProps?.storeFile     ?: file("../TMessagesProj/config/release.keystore")
+            storePassword _signingFromLocalProps?.storePassword ?: RELEASE_STORE_PASSWORD
+            keyAlias      _signingFromLocalProps?.keyAlias      ?: RELEASE_KEY_ALIAS
+            keyPassword   _signingFromLocalProps?.keyPassword   ?: RELEASE_KEY_PASSWORD
         }
 
         release {
-            storeFile file("../TMessagesProj/config/release.keystore")
-            storePassword RELEASE_STORE_PASSWORD
-            keyAlias RELEASE_KEY_ALIAS
-            keyPassword RELEASE_KEY_PASSWORD
+            storeFile     _signingFromLocalProps?.storeFile     ?: file("../TMessagesProj/config/release.keystore")
+            storePassword _signingFromLocalProps?.storePassword ?: RELEASE_STORE_PASSWORD
+            keyAlias      _signingFromLocalProps?.keyAlias      ?: RELEASE_KEY_ALIAS
+            keyPassword   _signingFromLocalProps?.keyPassword   ?: RELEASE_KEY_PASSWORD
         }
     }
 
