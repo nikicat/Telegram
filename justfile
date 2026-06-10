@@ -16,10 +16,9 @@ redroid   := "localhost:" + adb_port
 java_home    := "/usr/lib/jvm/java-17-openjdk"
 android_home := env_var_or_default("ANDROID_HOME", "/home/nb/Android/Sdk")
 
-# Telegram app metadata (debug variant)
+# Telegram app metadata (debug variant — kill/launch/wipe/uninstall use this pkg)
 pkg      := "org.telegram.messenger.zxc"
 activity := pkg + "/org.telegram.messenger.DefaultIcon"
-apk_rel  := "TMessagesProj_App/build/outputs/apk/afatX64/debug/app.apk"
 
 _adb_redroid := "adb -s " + redroid
 
@@ -38,13 +37,13 @@ singbox:
 singbox-if-missing:
     test -f singbox/libs/singboxbridge.aar || just singbox
 
-# build the x86_64 debug APK (incremental; Gradle daemon stays warm)
-apk: singbox-if-missing
+# build APK. abi: X64|Arm64  build: Debug|Release|Standalone (defaults match redroid inner loop)
+apk abi="X64" build="Debug": singbox-if-missing
     env JAVA_HOME={{java_home}} \
         ANDROID_HOME={{android_home}} \
         ANDROID_SDK_ROOT={{android_home}} \
         PATH={{java_home}}/bin:$PATH \
-        ./gradlew :TMessagesProj_App:assembleAfatX64Debug
+        ./gradlew :TMessagesProj_App:assembleAfat{{abi}}{{build}}
 
 # clean build outputs (slow next build)
 clean-build:
@@ -54,9 +53,9 @@ clean-build:
         PATH={{java_home}}/bin:$PATH \
         ./gradlew :TMessagesProj_App:clean
 
-# print absolute path to the built APK (does not build)
-apk-path:
-    @realpath {{apk_rel}}
+# print absolute path to the built APK (does not build). Same args as `apk`.
+apk-path abi="X64" build="Debug":
+    @realpath TMessagesProj_App/build/outputs/apk/afat{{abi}}/$(echo {{build}} | tr A-Z a-z)/app.apk
 
 # ----- redroid lifecycle -----
 
@@ -71,8 +70,7 @@ down:
 # down + up
 restart: down up
 
-# apply nftables-redroid.conf to restrict container traffic to the TUIC proxy
-# (host/port derived from default.proxy.link in local.properties; port -> 443 if absent)
+# restrict container traffic to the TUIC proxy (host/port from default.proxy.link in local.properties; port -> 443 if absent)
 firewall:
     @LINK=$(grep -E '^default\.proxy\.link=' local.properties | cut -d= -f2-) && \
         HOST=$(echo "$LINK" | sed -n 's/.*[?&]server=\([^&]*\).*/\1/p') && \
@@ -138,13 +136,13 @@ scrcpy device=redroid: (adb device)
 
 # ----- app lifecycle on DEVICE -----
 
-# build + install the APK on DEVICE
-install device=redroid: apk (adb device)
-    adb -s {{device}} install -r {{apk_rel}}
+# build + install the APK on DEVICE. Same abi/build args as `apk`.
+install abi="X64" build="Debug" device=redroid: (apk abi build) (adb device)
+    adb -s {{device}} install -r TMessagesProj_App/build/outputs/apk/afat{{abi}}/$(echo {{build}} | tr A-Z a-z)/app.apk
 
 # install without rebuilding (uses whatever APK is on disk)
-install-only device=redroid: (adb device)
-    adb -s {{device}} install -r {{apk_rel}}
+install-only abi="X64" build="Debug" device=redroid: (adb device)
+    adb -s {{device}} install -r TMessagesProj_App/build/outputs/apk/afat{{abi}}/$(echo {{build}} | tr A-Z a-z)/app.apk
 
 # launch the app on DEVICE (does not build/install)
 launch device=redroid: (adb device)
@@ -162,8 +160,8 @@ wipe device=redroid: (adb device)
 uninstall device=redroid: (adb device)
     -adb -s {{device}} uninstall {{pkg}}
 
-# full inner loop: build, install, kill old, launch
-run device=redroid: (install device) (kill device) (launch device)
+# full inner loop (X64 Debug): build, install, kill old, launch
+run device=redroid: (install "X64" "Debug" device) (kill device) (launch device)
 
 # follow Telegram-relevant logcat tags on DEVICE
 logcat device=redroid: (adb device)
