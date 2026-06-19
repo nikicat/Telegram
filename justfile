@@ -63,6 +63,44 @@ clean-build:
 apk-path:
     @realpath TMessagesProj_App/build/outputs/apk/afat{{abi}}/$(echo {{build}} | tr A-Z a-z)/app.apk
 
+# ----- publish (Google Play AAB) -----
+
+# build a release AAB for Google Play (flavor bundleAfat: minSdk 21, all 4 ABIs; bump version first)
+aab: singbox-if-missing
+    env JAVA_HOME={{java_home}} \
+        ANDROID_HOME={{android_home}} \
+        ANDROID_SDK_ROOT={{android_home}} \
+        PATH={{java_home}}/bin:$PATH \
+        ./gradlew :TMessagesProj_App:bundleBundleAfatRelease
+
+# print absolute path to the built AAB (does not build)
+aab-path:
+    @realpath TMessagesProj_App/build/outputs/bundle/bundleAfatRelease/*.aab
+
+# build an arm64-only release AAB (~1/4 the native size of `aab`; drops v7a/x86/x86_64)
+aab-arm64: singbox-if-missing
+    env JAVA_HOME={{java_home}} \
+        ANDROID_HOME={{android_home}} \
+        ANDROID_SDK_ROOT={{android_home}} \
+        PATH={{java_home}}/bin:$PATH \
+        ./gradlew :TMessagesProj_App:bundleBundleAfatArm64Release
+
+# print absolute path to the built arm64-only AAB (does not build)
+aab-arm64-path:
+    @realpath TMessagesProj_App/build/outputs/bundle/bundleAfatArm64Release/*.aab
+
+# bump APP_VERSION_CODE +1 (Play needs an increasing code); optionally set name: `just bump-version 12.7.4`
+bump-version name="":
+    @old=$(grep -E '^APP_VERSION_CODE=' gradle.properties | cut -d= -f2); \
+        new=$((old + 1)); \
+        sed -i "s/^APP_VERSION_CODE=.*/APP_VERSION_CODE=$new/" gradle.properties; \
+        echo "APP_VERSION_CODE: $old -> $new (Play versionCode -> $((new * 10 + 1)))"; \
+        if [ -n "{{name}}" ]; then \
+            oldname=$(grep -E '^APP_VERSION_NAME=' gradle.properties | cut -d= -f2); \
+            sed -i "s/^APP_VERSION_NAME=.*/APP_VERSION_NAME={{name}}/" gradle.properties; \
+            echo "APP_VERSION_NAME: $oldname -> {{name}}"; \
+        fi
+
 # ----- redroid lifecycle -----
 
 # start the redroid container
