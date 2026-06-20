@@ -89,6 +89,33 @@ aab-arm64: singbox-if-missing
 aab-arm64-path:
     @realpath TMessagesProj_App/build/outputs/bundle/bundleAfatArm64Release/*.aab
 
+# The publish-* recipes require play.service-account.file in local.properties (enables the GPP plugin);
+# they upload to the play.track track (default "internal"). Bump the version first (`just bump-version`).
+
+# upload the full AAB (all ABIs) + store listing to Google Play
+publish: singbox-if-missing
+    env JAVA_HOME={{java_home}} \
+        ANDROID_HOME={{android_home}} \
+        ANDROID_SDK_ROOT={{android_home}} \
+        PATH={{java_home}}/bin:$PATH \
+        ./gradlew :TMessagesProj_App:publishBundleAfatReleaseApps
+
+# upload the arm64-only AAB + store listing to Google Play
+publish-arm64: singbox-if-missing
+    env JAVA_HOME={{java_home}} \
+        ANDROID_HOME={{android_home}} \
+        ANDROID_SDK_ROOT={{android_home}} \
+        PATH={{java_home}}/bin:$PATH \
+        ./gradlew :TMessagesProj_App:publishBundleAfatArm64ReleaseApps
+
+# upload only the store listing (title/descriptions/graphics from src/main/play); no AAB build/upload
+publish-listing:
+    env JAVA_HOME={{java_home}} \
+        ANDROID_HOME={{android_home}} \
+        ANDROID_SDK_ROOT={{android_home}} \
+        PATH={{java_home}}/bin:$PATH \
+        ./gradlew :TMessagesProj_App:publishBundleAfatReleaseListing
+
 # bump APP_VERSION_CODE +1 (Play needs an increasing code); optionally set name: `just bump-version 12.7.4`
 bump-version name="":
     @old=$(grep -E '^APP_VERSION_CODE=' gradle.properties | cut -d= -f2); \

@@ -1,0 +1,6 @@
+Purplegram is a fast, secure, and private messenger.
+
+Edit this text before publishing the store listing. Describe your app's
+features, what makes it different, and anything reviewers should know.
+This file is uploaded verbatim to the Google Play store listing (max 4000
+characters).

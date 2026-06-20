@@ -335,3 +335,21 @@ if (_gsSource != null) {
     logger.warn("Google Services skipped for app.id '${_gsBaseAppId}' (Firebase/push disabled): " +
             "no config at ${_gsByAppId} and google-services.file not set in local.properties.")
 }
+
+// ----- Google Play publishing (Gradle Play Publisher) -----
+// Applied only when a service-account key is configured, so normal builds/CI are unaffected. With it set,
+// the publish<Variant> tasks upload the AAB + store listing (TMessagesProj_App/src/main/play/) to Play.
+// The target package is the variant applicationId, so this is parametrized by app.id like the rest.
+//   play.service-account.file  (local.properties) -> JSON key with Play access (required to enable)
+//   play.track                 (local.properties) -> release track; defaults to "internal"
+def _playKey = localProp('play.service-account.file')
+if (_playKey) {
+    def _playKeyFile = file(_playKey)
+    if (!_playKeyFile.exists()) throw new GradleException("play.service-account.file not found: $_playKeyFile")
+    apply plugin: 'com.github.triplet.play'
+    play {
+        serviceAccountCredentials = _playKeyFile
+        track = localProp('play.track') ?: 'internal'
+        defaultToAppBundles = true
+    }
+}
