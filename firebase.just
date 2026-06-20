@@ -51,4 +51,4 @@ google-services project="":
     json.dump(base, open(out, "w"), indent=2)
     print("wrote %s with %d client(s): %s" % (out, len(clients), ", ".join(sorted(clients))))
     PY
-    echo "done — run: just release aab-arm64"
+    echo "done — run: just build aab-arm64"
