@@ -26,6 +26,16 @@ def _localFile = rootProject.file('local.properties')
 if (_localFile.exists()) _localProps.load(new FileInputStream(_localFile))
 def localProp = { String k -> _localProps.getProperty(k) }
 
+// Effective base applicationId (app.id override, else the upstream package). Single source of truth
+// for the build: drives applicationId, the AAB archive name, and Google Services config resolution.
+def _effectiveAppId = localProp('app.id') ?: APP_PACKAGE
+
+// Name AABs by app.id so the bundle carries its app.id in its path
+// (build/outputs/bundle/.../<app.id>-<flavor>-<buildtype>.aab). APKs are named in applicationVariants.
+base {
+    archivesName = _effectiveAppId
+}
+
 // Resolve signing config: prefer local.properties -> keystore.file -> debug.properties chain
 // (mirroring Telegram-X); fall back to gradle.properties RELEASE_* + bundled release.keystore.
 def _signingFromLocalProps = {
@@ -48,7 +58,7 @@ android {
     buildToolsVersion '35.0.0'
 
     // app.id overrides APP_PACKAGE; applicationIdSuffix (.debug/.web) still applies on top.
-    defaultConfig.applicationId = localProp('app.id') ?: APP_PACKAGE
+    defaultConfig.applicationId = _effectiveAppId
     // app.name overrides ${appLabel} in debug manifests; release manifests still use @string/AppName.
     defaultConfig.manifestPlaceholders = [appLabel: localProp('app.name') ?: '@string/AppNameBeta']
 
@@ -229,7 +239,9 @@ android {
 
     applicationVariants.all { variant ->
         variant.outputs.all { output ->
-            outputFileName = "app.apk"
+            // Name the APK by its applicationId (incl. build-type suffix) so the binary carries its
+            // app.id in its path: build/outputs/apk/afat<abi>/<build>/<applicationId>.apk
+            outputFileName = "${variant.applicationId}.apk"
             output.versionCodeOverride = defaultConfig.versionCode * 10 + variant.productFlavors.get(0).abiVersionCode
         }
     }
@@ -270,17 +282,49 @@ android {
 }
 
 // ----- Firebase / Google Services -----
-// google-services.json is gitignored and staged here before the plugin runs, so a custom app.id
-// can ship its own Firebase project without dirtying the tracked default:
-//   * no app.id override        -> google-services.default.json (org.telegram.messenger*); upstream/CI unchanged.
-//   * app.id + google-services.file (local.properties) -> your own Firebase config (must match app.id + suffix).
-//   * app.id + no google-services.file                 -> skip the plugin (build works; Firebase/push disabled).
+// The Google Services config is app.id-bound, so it is resolved BY app.id and configs for different
+// app.ids coexist side by side. The resolved file is gitignored and staged here before the plugin
+// runs, so a custom app.id ships its own Firebase project without dirtying the tracked default:
+//   * no app.id override -> google-services.default.json (org.telegram.messenger*); upstream/CI unchanged.
+//   * app.id set         -> first of:
+//       1. google-services.file               (local.properties) — explicit exact-path override, or
+//       2. <google-services.dir>/google-services.<app.id>.json   — per-app-id convention (dir defaults
+//          to "keystore"); drop one file per app.id and switching app.id picks the matching one, or
+//       3. none found     -> skip the plugin (build works; Firebase/push disabled).
+// A resolved config must register a client for app.id AND every build-type suffix (release: none,
+// debug: .debug, standalone: .web). We verify that here and fail with a clear message instead of
+// letting the gms plugin fail late with a cryptic "No matching client found for package name".
 def _gsCustomAppId = localProp('app.id')
-def _gsCustomFile = localProp('google-services.file')
-def _gsSource = !_gsCustomAppId ? file("$projectDir/google-services.default.json")
-        : (_gsCustomFile ? file(_gsCustomFile) : null)
+def _gsBaseAppId = _effectiveAppId
+def _gsExplicitFile = localProp('google-services.file')
+def _gsDir = localProp('google-services.dir') ?: 'keystore'
+def _gsByAppId = rootProject.file("${_gsDir}/google-services.${_gsBaseAppId}.json")
+def _gsSource
+if (!_gsCustomAppId) {
+    _gsSource = file("$projectDir/google-services.default.json")
+} else if (_gsExplicitFile) {
+    _gsSource = file(_gsExplicitFile)
+    if (!_gsSource.exists()) throw new GradleException("google-services.file not found: $_gsSource")
+} else {
+    _gsSource = _gsByAppId.exists() ? _gsByAppId : null
+}
 if (_gsSource != null) {
-    if (!_gsSource.exists()) throw new GradleException("google-services source not found: $_gsSource")
+    def _gsExpected = ['', '.debug', '.web'].collect { _gsBaseAppId + it }   // release / debug / standalone
+    def _gsPkgs = new groovy.json.JsonSlurper().parse(_gsSource)
+            .client.collect { it.client_info.android_client_info.package_name } as Set
+    def _gsMissing = _gsExpected.findAll { !_gsPkgs.contains(it) }
+    if (_gsMissing) {
+        throw new GradleException(
+                "google-services config does not match app.id.\n" +
+                "  config:  ${_gsSource}\n" +
+                "  app.id:  ${_gsBaseAppId}\n" +
+                "  missing: ${_gsMissing.join(', ')}\n" +
+                "  has:     ${(_gsPkgs as List).sort().join(', ')}\n" +
+                "Fix one of:\n" +
+                "  - register the missing package name(s) in the Firebase project and re-download the config, or\n" +
+                "  - set app.id (local.properties) to a value the config already covers, or\n" +
+                "  - remove the config so the build runs without Firebase/push.")
+    }
     copy {
         from _gsSource
         into projectDir
@@ -288,6 +332,6 @@ if (_gsSource != null) {
     }
     apply plugin: 'com.google.gms.google-services'
 } else {
-    logger.warn("app.id is set but google-services.file is not — skipping Google Services plugin " +
-            "(Firebase/push disabled). Set google-services.file in local.properties to use your own Firebase.")
+    logger.warn("Google Services skipped for app.id '${_gsBaseAppId}' (Firebase/push disabled): " +
+            "no config at ${_gsByAppId} and google-services.file not set in local.properties.")
 }

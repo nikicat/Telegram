@@ -61,7 +61,7 @@ clean-build:
 
 # print absolute path to the built APK (does not build). Honors the abi/build vars.
 apk-path:
-    @realpath TMessagesProj_App/build/outputs/apk/afat{{abi}}/$(echo {{build}} | tr A-Z a-z)/app.apk
+    @realpath TMessagesProj_App/build/outputs/apk/afat{{abi}}/$(echo {{build}} | tr A-Z a-z)/*.apk
 
 # ----- publish (Google Play AAB) -----
 
@@ -182,11 +182,11 @@ scrcpy device=redroid: (adb device)
 
 # build + install the APK on DEVICE. Honors the abi/build vars (e.g. `just abi=Arm64 install`).
 install device=redroid: apk (adb device)
-    adb -s {{device}} install -r TMessagesProj_App/build/outputs/apk/afat{{abi}}/$(echo {{build}} | tr A-Z a-z)/app.apk
+    adb -s {{device}} install -r TMessagesProj_App/build/outputs/apk/afat{{abi}}/$(echo {{build}} | tr A-Z a-z)/*.apk
 
 # install without rebuilding (uses whatever APK is on disk). Honors the abi/build vars.
 install-only device=redroid: (adb device)
-    adb -s {{device}} install -r TMessagesProj_App/build/outputs/apk/afat{{abi}}/$(echo {{build}} | tr A-Z a-z)/app.apk
+    adb -s {{device}} install -r TMessagesProj_App/build/outputs/apk/afat{{abi}}/$(echo {{build}} | tr A-Z a-z)/*.apk
 
 # launch the app on DEVICE (does not build/install)
 launch device=redroid: (adb device)
