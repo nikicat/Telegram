@@ -1,0 +1,47 @@
+# Per-machine build config. Copy to local.properties (gitignored) and edit;
+# `just setup` does that copy for you and fills in the host-specific paths.
+# Every key is optional — an empty file builds the stock debug APK.
+
+# ---- toolchain (written by scripts/setup-toolchain.sh; host-specific) --------
+# sdk.dir      Android SDK location (also read from $ANDROID_HOME by the justfile).
+# cmake.dir    CMake install AGP should use instead of the SDK's cmake package.
+#              Required on aarch64: Google publishes cmake;3.22.1 for linux-x86_64
+#              only. Must contain bin/cmake AND bin/ninja. See docs/arm64-host.md.
+# cmake.version  Version declared to AGP; must match the cmake at cmake.dir.
+#                Defaults to 3.10.2 (the SDK package upstream Telegram pins).
+#sdk.dir=/home/you/Android/Sdk
+#cmake.dir=/home/you/Android/cmake-3.22.1-aarch64
+#cmake.version=3.22.1
+
+# ---- app identity -----------------------------------------------------------
+# app.id     base applicationId; the debug build appends `.debug`. Unset -> the
+#            upstream org.telegram.messenger (and the bundled google-services).
+# app.name   launcher name.
+#app.id=org.purplegram.messenger
+#app.name=Purplegram
+
+# ---- Telegram API credentials (https://core.telegram.org/api/obtaining_api_id)
+# Unset -> the ids hardcoded upstream, which are rate-limited and shared.
+#telegram.api_id=1234567
+#telegram.api_hash=00000000000000000000000000000000
+
+# ---- proxy ------------------------------------------------------------------
+# Baked into the build and applied on first launch (also used by
+# `just emulator firewall` to work out what the container may talk to).
+#default.proxy.link=tuic://uuid:password@host?server=proxy.example.com&port=443
+
+# ---- signing (release/standalone; debug is auto-signed) ---------------------
+# Path to a keystore *descriptor* properties file holding keystore.file,
+# keystore.password, key.alias, key.password (Telegram-X style chain).
+#keystore.file=/home/you/keys/purplegram.properties
+
+# ---- Firebase ---------------------------------------------------------------
+# google-services.dir   where per-app-id configs live (default: keystore/)
+# google-services.file  exact path override
+# `just firebase google-services` writes <dir>/google-services.<app.id>.json.
+#google-services.dir=keystore
+#google-services.file=/home/you/keys/google-services.json
+
+# ---- Google Play publishing (enables the Gradle Play Publisher tasks) --------
+#play.service-account.file=/home/you/keys/play-service-account.json
+#play.track=internal

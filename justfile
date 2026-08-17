@@ -22,3 +22,7 @@ mod device
 # list available modules
 default:
     @just --list
+
+# bootstrap this host: packages, Android SDK/NDK/CMake, local.properties, aarch64 shims (idempotent)
+setup:
+    bash scripts/setup-toolchain.sh

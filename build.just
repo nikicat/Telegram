@@ -6,7 +6,7 @@ default:
 
 # build the singbox gomobile AAR (~75 MB, gitignored; required by apk/aab)
 singbox:
-    env GO111MODULE=on PATH=$(go env GOPATH)/bin:$PATH \
+    env GO111MODULE=on ANDROID_HOME={{android_home}} PATH=$(go env GOPATH)/bin:$PATH \
         bash singbox/go/build.sh
 
 # build singbox AAR only if it doesn't exist yet (idempotent guard for apk/aab)
