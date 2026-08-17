@@ -13,18 +13,34 @@
 #        loop
 #        dm-verity
 #
-# GPU: this host has an NVIDIA proprietary driver, which redroid's in-container
-# mesa stack can't drive (host mode -> SurfaceFlinger "no suitable EGLConfig"
-# crash loop). So we use guest (software/ANGLE) rendering below. See the
+# GPU: we run guest (software) rendering. The x86_64 host this started on had an
+# NVIDIA proprietary driver, which redroid's in-container mesa stack can't drive
+# (host mode -> SurfaceFlinger "no suitable EGLConfig" crash loop). The current
+# aarch64 host's Mali GPU *is* mesa-driven (panthor), but redroid 11's bundled
+# mesa long predates that driver, so guest mode stays the pick on both. See the
 # `command:` block and https://github.com/remote-android/redroid-doc/issues/282
+#
+# ARCH: the guest ABI follows the host — `redroid/redroid:11.0.0-latest` is a
+# multi-arch tag, so on the aarch64 host podman pulls the arm64 image and the
+# guest reports ro.product.cpu.abi=arm64-v8a. The justfile defaults the APK
+# flavor to the host arch to match (see common.just, docs/arm64-host.md).
 
 services:
   redroid:
-    image: docker.io/teddynight/redroid16:latest
-    # Stock redroid/redroid:16.0.0_64only-latest has a broken ashmem-memfd
-    # compat check on kernels 5.18+ (no ashmem_linux module).
-    # teddynight/redroid16 patches libcutils/ashmem-dev.cpp to skip it.
-    # See: https://github.com/remote-android/redroid-patches/pull/5
+    image: docker.io/redroid/redroid:11.0.0-latest
+    # Android 11, not 12+, and stock redroid rather than a patched image:
+    #   * teddynight/redroid16 (previously used here) carries the ashmem-memfd
+    #     fix stock redroid >= 12 needs on kernels 5.18+, but it is published
+    #     for amd64 only — unusable on this aarch64 host.
+    #     (https://github.com/remote-android/redroid-patches/pull/5)
+    #   * redroid >= 12 also cannot render software-decoded video in guest GPU
+    #     mode: its Codec2 (c2.android.*) decoders emit YV12 buffers that the
+    #     ashmem gralloc can't hand to ANGLE, so video plays audio over a black
+    #     surface. Android 11 still uses the OMX decoders + SoftwareRenderer
+    #     with redroid's YUV->RGB workaround, so media in chats actually renders.
+    #     (redroid-doc#920, #552, #825; investigated in ../purpletube/docs/redroid.md)
+    # Android 11 = API 30; the app's minSdk is 21, so this exercises the real
+    # runtime paths. Test 12+ behaviour on a physical device (`just device ... device=<serial>`).
     privileged: true
     stdin_open: false
     tty: false

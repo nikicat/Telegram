@@ -21,6 +21,11 @@ firewall:
         HOST=$(echo "$LINK" | sed -n 's/.*[?&]server=\([^&]*\).*/\1/p') && \
         PORT=$(echo "$LINK" | sed -n 's/.*[?&]port=\([^&]*\).*/\1/p') && \
         PORT=${PORT:-443} && \
+        if [ -z "$LINK" ]; then \
+            echo "firewall: SKIPPED — no default.proxy.link in local.properties, so the" >&2; \
+            echo "          container talks to the network directly (see local.properties.example)." >&2; \
+            exit 0; \
+        fi && \
         if [ -z "$HOST" ]; then echo "firewall: could not parse server= from default.proxy.link in local.properties" >&2; exit 1; fi && \
         BRIDGE=$(sudo podman network inspect {{network}} | python3 -c "import json,sys;print(json.load(sys.stdin)[0]['network_interface'])") && \
         echo "Applying firewall to bridge $BRIDGE for $HOST:$PORT" && \
