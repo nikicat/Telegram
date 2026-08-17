@@ -3,6 +3,26 @@
 [Telegram](https://telegram.org) is a messaging app with a focus on speed and security. It’s superfast, simple and free.
 This repo contains the official source code for [Telegram App for Android](https://play.google.com/store/apps/details?id=org.telegram.messenger).
 
+## Development (this fork)
+
+```sh
+just setup            # bootstrap the host: packages, SDK/NDK/CMake, local.properties
+just build singbox    # gomobile AAR (once; ~8 min)
+just emulator start   # redroid container + wait for boot (ADB on localhost:5556)
+just device run       # build + install + launch the debug APK
+just device logcat    # Telegram-tagged logcat
+```
+
+`just` lists the modules, `just <module>` its recipes: **build** (apk/aab/publish),
+**device** (adb/install/run/scrcpy), **emulator** (redroid), **firebase**.
+The build matrix goes before the module, e.g. `just abi=Arm64 build=Release build apk`;
+`abi` defaults to the host's architecture.
+
+Per-machine config lives in `local.properties` — see `local.properties.example`
+for every key (app.id, Telegram API credentials, proxy link, signing, Firebase,
+Play publishing). Building on an aarch64 host needs a few shims, all installed
+and explained by `just setup`: [docs/arm64-host.md](docs/arm64-host.md).
+
 ## Creating your Telegram Application
 
 We welcome all developers to use our API and source code to create applications on our platform.
