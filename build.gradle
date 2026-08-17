@@ -17,3 +17,17 @@ buildscript {
 repositories {
     google()
 }
+
+// Per-machine overrides from local.properties (gitignored), readable from every
+// module — subprojects inherit root ext properties. Named hostProp so it does not
+// collide with the modules' own local.properties helpers (localProp/getProps).
+// Used for cmake.version: hosts without Google's x86_64-only SDK cmake package
+// (e.g. aarch64, see docs/arm64-host.md) point AGP at their own CMake via
+// cmake.dir + cmake.version instead.
+ext.hostProp = { String key, String fallback = null ->
+    def f = rootProject.file('local.properties')
+    if (!f.exists()) return fallback
+    def p = new Properties()
+    f.withInputStream { p.load(it) }
+    return p.getProperty(key) ?: fallback
+}
