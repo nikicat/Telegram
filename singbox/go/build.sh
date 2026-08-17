@@ -11,9 +11,17 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# `go install` puts gomobile/gobind in GOPATH/bin, which is usually not on PATH
+# when this runs from Gradle (:singbox:buildSingboxAar).
+export PATH="$(go env GOPATH)/bin:$PATH"
+
 ndk_primary=$(awk -F= '/^version\.ndk_primary=/ {print $2}' ../../version.properties)
 : "${ANDROID_NDK_HOME:=$ANDROID_HOME/ndk/${ndk_primary}}"
 export ANDROID_NDK_HOME
+
+# gomobile won't create the output directory, and libs/ holds only gitignored
+# artifacts — so it is absent in a fresh clone.
+mkdir -p ../libs
 
 gomobile bind -v \
   -target android/arm64,android/arm,android/amd64,android/386 \
