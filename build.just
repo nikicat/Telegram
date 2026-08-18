@@ -14,11 +14,11 @@ singbox:
 singbox-if-missing:
     test -f singbox/libs/singboxbridge.aar || just build singbox
 
-# build APK (honors the abi/build vars; override with e.g. `just abi=Arm64 build apk`)
+# build APK (honors the ABI/BUILD env vars; e.g. `ABI=Arm64 just build apk`)
 apk: singbox-if-missing
     {{_gradle}} :TMessagesProj_App:assembleAfat{{abi}}{{build}}
 
-# print absolute path to the built APK (does not build). Honors the abi/build vars.
+# print absolute path to the built APK (does not build). Honors the ABI/BUILD env vars.
 apk-path:
     @realpath TMessagesProj_App/build/outputs/apk/afat{{abi}}/$(echo {{build}} | tr A-Z a-z)/*.apk
 

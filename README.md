@@ -15,8 +15,9 @@ just device logcat    # Telegram-tagged logcat
 
 `just` lists the modules, `just <module>` its recipes: **build** (apk/aab/publish),
 **device** (adb/install/run/scrcpy), **emulator** (redroid), **firebase**.
-The build matrix goes before the module, e.g. `just abi=Arm64 build=Release build apk`;
-`abi` defaults to the host's architecture.
+The build matrix is set with env vars, e.g. `ABI=Arm64 BUILD=Release just build apk`;
+`ABI` defaults to the host's architecture. (just's `name=value` overrides do not
+reach recipes inside a module, so they are not used here.)
 
 Per-machine config lives in `local.properties` — see `local.properties.example`
 for every key (app.id, Telegram API credentials, proxy link, signing, Firebase,

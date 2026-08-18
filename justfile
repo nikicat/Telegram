@@ -7,11 +7,12 @@
 # Recipes are split into modules (see *.just). Invoke as `just <module> <recipe>`, e.g.
 #   just build apk            just device run            just emulator start
 #   just build publish        just firebase google-services
-# Override the build matrix before the module, e.g. `just abi=Arm64 build apk`, `just build=Release device run`.
+# Override the build matrix with env vars, e.g. `ABI=Arm64 just build apk`, `BUILD=Release just device run`.
 # `just` or `just --list` lists modules; `just <module>` lists that module's recipes.
 
-# Shared settings + variables (also imported by each module). Imported here so command-line
-# overrides like `just abi=Arm64 ...` are accepted at the root and propagate into the modules.
+# Shared settings + variables (also imported by each module, since just does not pass a parent's
+# variables down into a module). The build matrix is env-var driven for the same reason: just's
+# `name=value` overrides never reach a module's recipes.
 import 'common.just'
 
 mod build

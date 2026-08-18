@@ -25,9 +25,16 @@ activity := pkg + "/org.telegram.messenger.DefaultIcon"
 
 _adb_redroid := "adb -s " + redroid
 
-# Build matrix. Override BEFORE the module + recipe, e.g. `just abi=Arm64 build apk`, `just build=Release device run`.
-#   abi: X64|Arm64   build: Debug|Release|Standalone   (defaults match the redroid inner loop)
+# Build matrix. Override with ENVIRONMENT VARIABLES, e.g.
+#   ABI=Arm64 just build apk        BUILD=Release just device run
+#   ABI: X64|Arm64   BUILD: Debug|Release|Standalone   (defaults match the redroid inner loop)
+#
+# Env vars, not just's `name=value` overrides: those do NOT reach recipes in a
+# module (verified on just 1.58 — `just build=Release build apk` and
+# `--set build Release` both silently build Debug), and a build matrix that
+# quietly ignores you is worse than no build matrix.
+#
 # The redroid guest ABI follows the host (the image tag is multi-arch), so default
 # the APK flavor to the host's own architecture.
-abi   := if arch() == "aarch64" { "Arm64" } else { "X64" }
-build := "Debug"
+abi   := env_var_or_default("ABI", if arch() == "aarch64" { "Arm64" } else { "X64" })
+build := env_var_or_default("BUILD", "Debug")
