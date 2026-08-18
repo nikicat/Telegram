@@ -59,8 +59,14 @@ android {
 
     // app.id overrides APP_PACKAGE; applicationIdSuffix (.debug/.web) still applies on top.
     defaultConfig.applicationId = _effectiveAppId
-    // app.name overrides ${appLabel} in debug manifests; release manifests still use @string/AppName.
+    // app.name overrides ${appLabel} in debug manifests; release manifests use @string/AppName.
     defaultConfig.manifestPlaceholders = [appLabel: localProp('app.name') ?: '@string/AppNameBeta']
+    // ...so also override that string, which lives in the TMessagesProj library: a resource
+    // declared by the app module wins over the library's. This makes app.name the single
+    // source of truth for the name in every build type (and everywhere the app prints it).
+    if (localProp('app.name')) {
+        defaultConfig.resValue "string", "AppName", localProp('app.name')
+    }
 
     sourceSets.main.jniLibs.srcDirs = ['../TMessagesProj/jni/']
 
